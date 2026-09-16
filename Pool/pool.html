@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Afterglow Pool</title>
+	<style>
+		:root {
+			--paper: #efe8d8;
+			--muted: #a69f94;
+			--gold: #f6c96c;
+			--cyan: #70e0d0;
+			--ink: #10191d;
+			--felt: #144842;
+		}
+		* { box-sizing: border-box; }
+		body {
+			margin: 0;
+			min-height: 100vh;
+			overflow: hidden;
+			color: var(--paper);
+			background: radial-gradient(circle at 50% 25%, #1e3438 0, #111c22 42%, #080e12 100%);
+			font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+		}
+		body::before, body::after { content: ""; position: fixed; pointer-events: none; }
+		body::before { inset: 0; opacity: .16; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 160 160' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.18'/%3E%3C/svg%3E"); mix-blend-mode: screen; }
+		body::after { width: 55vw; height: 55vw; left: 23%; top: -28%; border-radius: 50%; background: rgba(111, 224, 208, .08); filter: blur(70px); }
+		.shell { width: min(1240px, 100%); height: 100vh; margin: auto; padding: 28px clamp(18px, 5vw, 72px) 22px; display: grid; grid-template-rows: auto 1fr auto; gap: 18px; }
+		header { display: flex; justify-content: space-between; align-items: end; gap: 20px; }
+		.kicker, .label, footer { text-transform: uppercase; letter-spacing: .16em; }
+		.kicker { margin: 0 0 7px; color: var(--gold); font-size: 10px; font-weight: bold; }
+		h1 { margin: 0; font: 400 clamp(34px, 5vw, 62px)/.9 Georgia, serif; letter-spacing: -.045em; }
+		.sub { margin: 10px 0 0; color: var(--muted); font-size: 12px; }
+		.hud { display: flex; gap: 9px; }
+		.stat { min-width: 104px; padding: 11px 14px; border: 1px solid rgba(239, 232, 216, .16); background: rgba(7, 13, 16, .58); }
+		.stat.active { border-color: var(--gold); box-shadow: 0 0 22px rgba(246, 201, 108, .14); }
+		.label { color: var(--muted); font-size: 9px; }
+		.stat strong { display: block; margin-top: 6px; color: var(--gold); font: 400 24px Georgia, serif; }
+		.table-frame { position: relative; min-height: 0; padding: clamp(12px, 2vw, 24px); border: 1px solid rgba(239, 232, 216, .2); background: #6b4028; box-shadow: 0 28px 90px rgba(0, 0, 0, .42), inset 0 0 0 2px rgba(246, 201, 108, .15); }
+		.table-frame::before { content: ""; position: absolute; inset: 6px; border: 1px solid rgba(246, 201, 108, .28); pointer-events: none; }
+		canvas { display: block; width: 100%; height: 100%; cursor: crosshair; background: var(--felt); }
+		.table-glow { position: absolute; inset: 12%; pointer-events: none; border-radius: 50%; box-shadow: 0 0 90px rgba(112, 224, 208, .14); }
+		.help { position: absolute; left: 50%; bottom: 28px; transform: translateX(-50%); padding: 9px 15px; border: 1px solid rgba(239, 232, 216, .16); background: rgba(8, 14, 17, .7); color: var(--muted); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; transition: opacity .25s; pointer-events: none; white-space: nowrap; }
+		.help.hidden { opacity: 0; }
+		footer { display: flex; justify-content: space-between; color: var(--muted); font-size: 9px; }
+		.power { display: flex; align-items: center; gap: 9px; }
+		.power input { width: 138px; accent-color: var(--gold); cursor: pointer; }
+		.bar { width: 120px; height: 5px; border: 1px solid rgba(239,232,216,.22); }
+		.bar i { display: block; width: 28%; height: 100%; background: linear-gradient(90deg, var(--cyan), var(--gold)); transition: width .08s linear; }
+		@media (max-width: 680px) { .shell { padding-top: 17px; gap: 12px; } header { align-items: start; flex-direction: column; } .hud { width: 100%; } .stat { flex: 1; min-width: 0; } footer { gap: 10px; flex-direction: column; } .help { bottom: 16px; font-size: 8px; } }
+	</style>
+</head>
+<body>
+	<main class="shell">
+		<header>
+			<div><p class="kicker">Afterglow / Table 01</p><h1>Pool, in motion.</h1><p class="sub">Read the angle. Feel the hit. Own the table.</p></div>
+			<div class="hud"><div class="stat active" id="turn-card"><span class="label">Player <b id="turn">1</b> turn</span><strong id="score">0000</strong></div><div class="stat"><span class="label">P1 / P2</span><strong id="scores">000 / 000</strong></div><div class="stat"><span class="label">Balls left</span><strong id="left">15</strong></div></div>
+		</header>
+		<section class="table-frame" aria-label="2D pool table">
+			<div class="table-glow"></div><canvas id="table"></canvas><div class="help" id="help">Player 1: move to aim / hold to charge / release to break</div>
+		</section>
+		<footer><span>Mouse or touch / aim &nbsp;&nbsp; Space / shoot &nbsp;&nbsp; R / rack again</span><span class="power"><label for="power-slider">Launch power</label><input id="power-slider" type="range" min="0.08" max="1" step="0.01" value="0.28" aria-label="Cue ball launch power"><span class="bar"><i id="power"></i></span></span></footer>
+	</main>
+	<script>
+		const canvas = document.getElementById("table"), ctx = canvas.getContext("2d");
+		const scoreEl = document.getElementById("score"), scoresEl = document.getElementById("scores"), turnEl = document.getElementById("turn"), turnCard = document.getElementById("turn-card"), leftEl = document.getElementById("left"), powerEl = document.getElementById("power"), powerSlider = document.getElementById("power-slider"), help = document.getElementById("help");
+		const balls = [], particles = [], rings = [], keys = new Set(), players = [0, 0];
+		const lowPowerDevice = (navigator.hardwareConcurrency || 4) <= 4;
+		const fxBudget = lowPowerDevice ? 22 : 42;
+		const POCKET_RADIUS = 21, POCKET_PULL_RADIUS = 38, POCKET_CAPTURE_RADIUS = 25;
+		const DEFAULT_POWER = 0.28;
+		const cue = { x: 0, y: 0, vx: 0, vy: 0, r: 10, active: true }, aim = { x: 0, y: 0 }, pockets = [];
+		let W = 0, H = 0, scale = 1, score = 0, turn = 0, power = DEFAULT_POWER, charging = false, shotInProgress = false, shotPocketed = false, scratch = false, hitStop = 0, last = 0, shake = 0, flash = 0, impactLevel = 0, intro = true;
+		const colors = ["#e95f55", "#f4c96b", "#6ec7d1", "#bf75d7", "#e98e50", "#7191dd", "#d6e2d8"];
+
+		function resize() { const b = canvas.getBoundingClientRect(); scale = Math.min(devicePixelRatio || 1, 2); W = b.width; H = b.height; canvas.width = W * scale; canvas.height = H * scale; ctx.setTransform(scale, 0, 0, scale, 0, 0); makePockets(); if (!balls.length) rack(); }
+		function makePockets() { const x = 25, y = 25, w = W - 50, h = H - 50; pockets.splice(0, 6, {x, y}, {x: W/2, y: y-1}, {x: W-x, y}, {x, y: H-y}, {x: W/2, y: H-y+1}, {x: W-x, y: H-y}); }
+		function rack() { balls.length = 0; players[0] = players[1] = 0; score = 0; turn = 0; shotInProgress = false; shotPocketed = false; scratch = false; cue.x = W * .27; cue.y = H * .5; cue.vx = cue.vy = 0; cue.active = true; let startX = W * .7, startY = H * .5, r = Math.min(11, W * .018); for (let row = 0, n = 0; row < 5; row++) for (let col = 0; col <= row; col++, n++) balls.push({ x: startX + row * r * 1.75, y: startY + (col - row / 2) * r * 2.1, vx: 0, vy: 0, r, color: colors[n % colors.length], stripe: n % 2 === 0, number: n + 1, live: true }); updateHud(); intro = true; help.classList.remove("hidden"); }
+		function updateHud() { score = players[turn]; scoreEl.textContent = String(score).padStart(4, "0"); scoresEl.textContent = `${String(players[0]).padStart(3, "0")} / ${String(players[1]).padStart(3, "0")}`; turnEl.textContent = turn + 1; turnCard.classList.toggle("active", true); leftEl.textContent = String(balls.filter(b => b.live).length).padStart(2, "0"); }
+		function pointer(e) { const b = canvas.getBoundingClientRect(); const touch = e.touches?.[0]; aim.x = (touch ? touch.clientX : e.clientX) - b.left; aim.y = (touch ? touch.clientY : e.clientY) - b.top; }
+		function shoot() { if (!cue.active || shotInProgress || hitStop > 0 || Math.hypot(cue.vx, cue.vy) > 5) return; power = Number(powerSlider.value); const dx = aim.x - cue.x, dy = aim.y - cue.y, d = Math.hypot(dx, dy) || 1, force = 340 + power * 760; cue.vx = dx / d * force; cue.vy = dy / d * force; charging = false; power = DEFAULT_POWER; powerSlider.value = DEFAULT_POWER; shotInProgress = true; shotPocketed = false; scratch = false; impact(cue.x, cue.y, "#f6c96c", 12); help.classList.add("hidden"); intro = false; }
+		function impact(x, y, color, intensity) { shake = Math.max(shake, intensity * 1.8); flash = Math.max(flash, Math.min(1, intensity / 9)); impactLevel = Math.max(impactLevel, intensity); hitStop = Math.max(hitStop, intensity > 7 ? .055 : .018); rings.push({ x, y, r: 3, life: 1, color, width: intensity > 7 ? 4 : 2 }); if (intensity > 7) rings.push({ x, y, r: 7, life: .8, color, width: 1 }); const count = Math.min(fxBudget, Math.round(intensity * (lowPowerDevice ? 1.7 : 2.5))); for (let i = 0; i < count; i++) { const a = Math.random() * Math.PI * 2, s = 45 + Math.random() * intensity * 24; particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: .3 + Math.random() * .55, max: .85, color, size: 1 + Math.random() * 2.5 }); } }
+		function pocket(ball) { if (!ball.live && ball !== cue) return; ball.vx = ball.vy = 0; if (ball === cue) { cue.active = false; scratch = true; impact(ball.x, ball.y, "#f06f61", 15); return; } ball.live = false; players[turn] += ball.number === 8 ? 100 : 25; shotPocketed = true; impact(ball.x, ball.y, "#70e0d0", 15); updateHud(); }
+		function collide(a, b) { const dx = b.x-a.x, dy = b.y-a.y, d = Math.hypot(dx, dy), min = a.r+b.r; if (!d || d >= min) return; const nx=dx/d, ny=dy/d, overlap=min-d; a.x-=nx*overlap/2; a.y-=ny*overlap/2; b.x+=nx*overlap/2; b.y+=ny*overlap/2; const rel=(a.vx-b.vx)*nx+(a.vy-b.vy)*ny; if (rel <= 0) return; const impulse=rel*.96; a.vx-=impulse*nx; a.vy-=impulse*ny; b.vx+=impulse*nx; b.vy+=impulse*ny; if (Math.abs(rel)>80) impact((a.x+b.x)/2,(a.y+b.y)/2,"#f6c96c",Math.min(16, rel/32)); }
+		function physicsStep(dt) { const all = [...(cue.active ? [cue] : []), ...balls.filter(b => b.live)]; for (const b of all) { b.x += b.vx*dt; b.y += b.vy*dt; b.vx *= Math.pow(.38, dt); b.vy *= Math.pow(.38, dt); if (Math.hypot(b.vx,b.vy)<2) b.vx=b.vy=0; let captured = false; for(const p of pockets) { const pocketDistance = Math.hypot(b.x-p.x,b.y-p.y); if (pocketDistance < POCKET_PULL_RADIUS && Math.hypot(b.vx,b.vy) > 18) { const pull = Math.min(1, (POCKET_PULL_RADIUS - pocketDistance) / POCKET_PULL_RADIUS) * 110; b.vx += (p.x - b.x) / Math.max(pocketDistance, 1) * pull * dt; b.vy += (p.y - b.y) / Math.max(pocketDistance, 1) * pull * dt; } if(pocketDistance < POCKET_CAPTURE_RADIUS) { pocket(b); captured = true; break; } } if (captured) continue; const pad=25+b.r; if(b.x<pad){b.x=pad;b.vx=Math.abs(b.vx)*.88;impact(b.x,b.y,"#70e0d0",3)} if(b.x>W-pad){b.x=W-pad;b.vx=-Math.abs(b.vx)*.88;impact(b.x,b.y,"#70e0d0",3)} if(b.y<pad){b.y=pad;b.vy=Math.abs(b.vy)*.88} if(b.y>H-pad){b.y=H-pad;b.vy=-Math.abs(b.vy)*.88} }
+			for(let i=0;i<all.length;i++) for(let j=i+1;j<all.length;j++) collide(all[i],all[j]); }
+		function finishShot() { if (!shotInProgress || [...balls.filter(b => b.live), ...(cue.active ? [cue] : [])].some(b => Math.hypot(b.vx, b.vy) > 7)) return; if (!cue.active) { cue.x = W * .27; cue.y = H * .5; cue.active = true; cue.vx = cue.vy = 0; } if (!shotPocketed || scratch) turn = 1 - turn; shotInProgress = false; charging = false; help.textContent = `Player ${turn + 1}: move to aim / hold to charge / release to break`; help.classList.remove("hidden"); updateHud(); }
+		function update(dt) { if (hitStop > 0) hitStop -= dt; else for (let i = 0; i < 3; i++) physicsStep(dt / 3); finishShot(); for(const p of particles){p.x+=p.vx*dt;p.y+=p.vy*dt;p.vx*=.97;p.vy*=.97;p.life-=dt;} for(let i=particles.length-1;i>=0;i--)if(particles[i].life<=0)particles.splice(i,1); for(const r of rings){r.r+=dt*(r.width > 2 ? 180 : 100);r.life-=dt*(r.width > 2 ? 2.4 : 1.8);} for(let i=rings.length-1;i>=0;i--)if(rings[i].life<=0)rings.splice(i,1); shake*=Math.pow(.001,dt); flash*=Math.pow(.002,dt); impactLevel*=Math.pow(.01,dt); }
+		function ballDraw(b) { if (!b.live) return; const g=ctx.createRadialGradient(b.x-b.r*.35,b.y-b.r*.4,1,b.x,b.y,b.r*1.1); g.addColorStop(0,"#fff"); g.addColorStop(.18,b.stripe?"#fff":b.color); g.addColorStop(1,b.color); ctx.fillStyle=g; ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,Math.PI*2);ctx.fill(); if(b.stripe){ctx.fillStyle="rgba(255,255,255,.78)";ctx.fillRect(b.x-b.r,b.y-b.r*.29,b.r*2,b.r*.58);} ctx.fillStyle="#fff";ctx.beginPath();ctx.arc(b.x,b.y,b.r*.34,0,Math.PI*2);ctx.fill();ctx.fillStyle="#172129";ctx.font=`bold ${Math.max(7,b.r*.65)}px Arial`;ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(b.number,b.x,b.y+.3); }
+		function draw() { ctx.save(); const j=shake? (Math.random()-.5)*shake*.7:0;ctx.translate(j,j); ctx.clearRect(-20,-20,W+40,H+40); const felt=ctx.createRadialGradient(W*.48,H*.44,20,W*.5,H*.5,Math.max(W,H)*.7);felt.addColorStop(0,"#1b655c");felt.addColorStop(.65,"#124a44");felt.addColorStop(1,"#0b302f");ctx.fillStyle=felt;ctx.fillRect(0,0,W,H); ctx.strokeStyle="rgba(150,255,223,.13)";ctx.lineWidth=1;for(let x=-H;x<W+H;x+=38){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x+H,H);ctx.stroke();}
+			for(const p of pockets){ctx.fillStyle="#091316";ctx.beginPath();ctx.arc(p.x,p.y,POCKET_RADIUS,0,Math.PI*2);ctx.fill();ctx.strokeStyle="rgba(246,201,108,.55)";ctx.lineWidth=2;ctx.stroke();} ctx.strokeStyle="rgba(246,201,108,.42)";ctx.lineWidth=1;ctx.strokeRect(25,25,W-50,H-50);
+			if(cue.active && !intro && Math.hypot(cue.vx,cue.vy)<5){const dx=aim.x-cue.x,dy=aim.y-cue.y,d=Math.hypot(dx,dy)||1;ctx.setLineDash([7,9]);ctx.strokeStyle="rgba(239,232,216,.42)";ctx.beginPath();ctx.moveTo(cue.x,cue.y);ctx.lineTo(cue.x+dx/d*230,cue.y+dy/d*230);ctx.stroke();ctx.setLineDash([]);} for(const b of balls)ballDraw(b); ctx.fillStyle="#fffdf5";ctx.shadowColor="#70e0d0";ctx.shadowBlur=cue.active?10:0;ctx.beginPath();ctx.arc(cue.x,cue.y,cue.r,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;
+			for(const r of rings){ctx.globalAlpha=r.life;ctx.strokeStyle=r.color;ctx.lineWidth=r.width;ctx.beginPath();ctx.arc(r.x,r.y,r.r,0,Math.PI*2);ctx.stroke();} for(const p of particles){ctx.globalAlpha=Math.max(0,p.life/p.max);ctx.fillStyle=p.color;ctx.fillRect(p.x-p.size/2,p.y-p.size/2,p.size,p.size);} ctx.globalAlpha=1;ctx.restore(); if(flash){const vignette=ctx.createRadialGradient(W/2,H/2,Math.min(W,H)*.1,W/2,H/2,Math.max(W,H)*.75);vignette.addColorStop(0,`rgba(255,250,220,${flash*.28})`);vignette.addColorStop(.55,`rgba(255,177,92,${flash*.08})`);vignette.addColorStop(1,`rgba(255,65,55,${flash*.22})`);ctx.fillStyle=vignette;ctx.fillRect(0,0,W,H);ctx.strokeStyle=`rgba(255,236,170,${flash*.55})`;ctx.lineWidth=2+impactLevel*.12;ctx.strokeRect(2,2,W-4,H-4);} }
+		function loop(t){const dt=Math.min(.033,(t-last)/1000||0);last=t;if(charging && !shotInProgress){power=Math.min(1,power+dt*.75);powerSlider.value=power.toFixed(2);}powerEl.style.width=`${28+power*72}%`;update(dt);draw();requestAnimationFrame(loop);} 
+		powerSlider.addEventListener("input", () => { if (!shotInProgress) power = Number(powerSlider.value); }); canvas.addEventListener("pointermove", pointer); canvas.addEventListener("pointerdown", e=>{pointer(e);if(!shotInProgress){power=Number(powerSlider.value);charging=true;}canvas.setPointerCapture(e.pointerId);}); canvas.addEventListener("pointerup", shoot); canvas.addEventListener("touchmove",e=>{pointer(e);e.preventDefault()},{passive:false}); window.addEventListener("keydown",e=>{keys.add(e.key.toLowerCase());if(e.code==="Space"){e.preventDefault();if(!shotInProgress){power=Number(powerSlider.value);charging=true;}}if(e.key.toLowerCase()==="r")rack();}); window.addEventListener("keyup",e=>{keys.delete(e.key.toLowerCase());if(e.code==="Space")shoot();}); window.addEventListener("resize",resize); resize(); requestAnimationFrame(loop);
+	</script>
+</body>
+</html>
