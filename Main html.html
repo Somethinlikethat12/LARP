@@ -1,16 +1,80 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <link rel="stylesheet" href="css.css">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title></title>
-    
+    <title>Tung Tung Arcade Game</title>
+    <style>
+        body {
+            margin: 0; padding: 0;
+            background-color: #222; overflow: hidden;
+            width: 100vw; height: 100vh; position: relative;
+        }
+        
+        /* Player Box (Angel Tung) */
+        #hurtbox {
+            width: 100px; height: 100px; position: absolute; left: 0; top: 0;
+            background-color: lightblue; /* Fallback color */
+            background-image: url('img/player.png'); 
+            background-size: cover;
+            transition: opacity 0.1s;
+        }
+        
+        /* Enemy Box Styles (Regular Tungs & Turret) */
+        .enemy-hitbox { width: 100px; height: 100px; position: absolute; background-size: cover; }
+        
+        .basic-mob { 
+            background-color: red; 
+            background-image: url('img/enemy.png'); 
+        } 
+        .tracker-mob { 
+            background-color: purple; 
+            background-image: url('img/tracker.png'); 
+            filter: hue-rotate(90deg); 
+        }
+        .turret { 
+            background-color: green; 
+            background-image: url('img/turret.png'); 
+            transform-origin: center center;
+        }
+        
+        /* Weapons & Projectiles */
+        .bullet {
+            width: 20px; height: 20px; position: absolute;
+            background-color: orange; border-radius: 50%;
+            background-image: url('img/laser.png');
+            background-size: cover;
+        }
+        
+        .player-attack {
+            width: 80px; height: 100px; position: absolute;
+            background-color: rgba(255, 255, 0, 0.5); 
+            background-image: url('img/tung.png'); 
+            background-size: cover;
+            transform-origin: bottom center; 
+        }
+
+        /* Swing Animations */
+        .swing-right { animation: slashRight 0.15s linear forwards; }
+        .swing-left { animation: slashLeft 0.15s linear forwards; }
+
+        @keyframes slashRight {
+            0% { transform: rotate(-45deg); }
+            100% { transform: rotate(45deg); }
+        }
+        @keyframes slashLeft {
+            0% { transform: scaleX(-1) rotate(-45deg); }
+            100% { transform: scaleX(-1) rotate(45deg); }
+        }
+    </style>
 </head>
 <body>
-<div id = "hurtbox"></div>
 
-    <script src="js.js"></script>
+    <!-- 1. The Game Engine Needs This Element to Draw the Player! -->
+    <div id="hurtbox"></div>
+
+    <!-- 2. This Script Link Fires Up the Entire Calculation Loop! -->
+    <script src="Game.js"></script>
 
 </body>
 </html>
