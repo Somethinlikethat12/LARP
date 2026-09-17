@@ -70,10 +70,10 @@
         /* Top surface of the platform you walk on */
         .p-top    { width: 1200px; height: 1200px; background: #1a1a3a; transform: rotateX(90deg) translateZ(0px); }
         /* Thick side borders to give it a block structure */
-        .p-front  { width: 1200px; height: 40px; background: #101026; transform: rotateX(0deg) translateZ(600px) translateY(0px); }
-        .p-back   { width: 1200px; height: 40px; background: #101026; transform: rotateX(180deg) translateZ(600px) translateY(-40px); }
-        .p-right  { width: 1200px; height: 40px; background: #151530; transform: rotateY(90deg) translateZ(600px) translateY(0px); }
-        .p-left   { width: 1200px; height: 40px; background: #151530; transform: rotateY(-90deg) translateZ(600px) translateY(0px); }
+        .p-front  { width: 1200px; height: 40px; background: #4b5153; transform: rotateX(0deg) translateZ(600px) translateY(0px); }
+        .p-back   { width: 1200px; height: 40px; background: #4b5153; transform: rotateX(180deg) translateZ(600px) translateY(-40px); }
+        .p-right  { width: 1200px; height: 40px; background: #4b5153; transform: rotateY(90deg) translateZ(600px) translateY(0px); }
+        .p-left   { width: 1200px; height: 40px; background: #4b5153; transform: rotateY(-90deg) translateZ(600px) translateY(0px); }
 
         /* The Center Obstacle Cube */
         .cube {
@@ -156,8 +156,10 @@
         const jumpForce = 9;
         const floorHeight = 120; // Default standing position above y=0 platform plane
         let isGrounded = true;
+        let accel = 1;
+        let velocityX = 0;
 
-        const speed = 5;
+        const speed = 7;
 
         instructions.addEventListener('click', () => {
             document.body.requestPointerLock();
@@ -197,7 +199,7 @@
                 let sin = Math.sin(angleRad);
                 let cos = Math.cos(angleRad);
 
-                if (keys.w) { camX += sin * speed; camZ += cos * speed; }
+                if (keys.w) { velocityX=(speed*accel); camX += sin * velocityX; camZ += cos * velocityX; accel = accel*1.01}else if(!keys.w){ velocity=0;}
                 if (keys.s) { camX -= sin * speed; camZ -= cos * speed; }
                 if (keys.a) { camX += cos * speed; camZ -= sin * speed; }
                 if (keys.d) { camX -= cos * speed; camZ += sin * speed; }
