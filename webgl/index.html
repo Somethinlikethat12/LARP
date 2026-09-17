@@ -1,12 +1,125 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <title>WebGL Demo</title>
-    <script src="webgl-demo.js" type="module"></script>
-  </head>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive 3D Cube</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
 
-  <body>
-    <canvas id="gl-canvas" width="640" height="480"></canvas>
-  </body>
+        body {
+            background-color: #1a1a1a;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            user-select: none;
+            font-family: sans-serif;
+        }
+
+        /* 3D Scene Wrapper */
+        .scene {
+            width: 200px;
+            height: 200px;
+            perspective: 600px; /* Gives the depth effect */
+            cursor: grab;
+        }
+
+        .scene:active {
+            cursor: grabbing;
+        }
+
+        /* The Cube Container */
+        .cube {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            transform-style: preserve-3d;
+            transform: rotateX(-20deg) rotateY(30deg); /* Initial angle */
+            transition: transform 0.1s ease-out;
+        }
+
+        /* Base Face Styles */
+        .face {
+            position: absolute;
+            width: 200px;
+            height: 200px;
+            border: 3px solid #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            font-weight: bold;
+            color: white;
+            opacity: 0.85;
+        }
+
+        /* Positioning each face in 3D space */
+        .front  { background: #ff4136; transform: rotateY(  0deg) translateZ(100px); }
+        .back   { background: #0074d9; transform: rotateY(180deg) translateZ(100px); }
+        .right  { background: #2ecc40; transform: rotateY( 90deg) translateZ(100px); }
+        .left   { background: #ffdc00; transform: rotateY(-90deg) translateZ(100px); color: #111; }
+        .top    { background: #b10dc9; transform: rotateX( 90deg) translateZ(100px); }
+        .bottom { background: #ff851b; transform: rotateX(-90deg) translateZ(100px); }
+    </style>
+</head>
+<body>
+
+    <div class="scene" id="scene">
+        <div class="cube" id="cube">
+            <div class="face front">Front</div>
+            <div class="face back">Back</div>
+            <div class="face right">Right</div>
+            <div class="face left">Left</div>
+            <div class="face top">Top</div>
+            <div class="face bottom">Bottom</div>
+        </div>
+    </div>
+
+    <script>
+        const scene = document.getElementById('scene');
+        const cube = document.getElementById('cube');
+
+        let isDragging = false;
+        let previousMousePosition = { x: 0, y: 0 };
+        
+        // Track the current rotation angles
+        let currentRotation = { x: -20, y: 30 }; 
+
+        // Mouse Down - Start dragging
+        scene.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            previousMousePosition = { x: e.clientX, y: e.clientY };
+        });
+
+        // Mouse Move - Rotate cube based on delta movements
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+
+            const deltaMove = {
+                x: e.clientX - previousMousePosition.x,
+                y: e.clientY - previousMousePosition.y
+            };
+
+            // Y movement rotates around X-axis, X movement rotates around Y-axis
+            currentRotation.y += deltaMove.x * 0.5;
+            currentRotation.x -= deltaMove.y * 0.5;
+
+            // Apply rotation string to CSS
+            cube.style.transform = `rotateX(${currentRotation.x}deg) rotateY(${currentRotation.y}deg)`;
+
+            previousMousePosition = { x: e.clientX, y: e.clientY };
+        });
+
+        // Mouse Up - Stop dragging
+        document.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+    </script>
+</body>
 </html>
