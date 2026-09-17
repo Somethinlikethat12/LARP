@@ -190,17 +190,19 @@
         .evil-tung .left-wing { left: -4px; }
         .evil-tung .right-wing { right: -4px; transform: scaleX(-1); }
 
-        .poison-impact {
+        .pollution-impact {
             position: absolute;
             left: 0;
             top: 0;
-            width: 60px;
-            height: 60px;
+            width: 62px;
+            height: 62px;
             border-radius: 50%;
-            background: radial-gradient(circle, rgba(209, 255, 116, 0.95) 0%, rgba(107, 240, 153, 0.8) 26%, rgba(51, 155, 84, 0.35) 56%, rgba(18, 64, 35, 0) 100%);
-            box-shadow: 0 0 18px rgba(87, 255, 129, 0.8);
+            background: radial-gradient(circle, rgba(214, 222, 134, 0.9) 0%, rgba(125, 139, 94, 0.78) 18%, rgba(80, 88, 68, 0.5) 38%, rgba(31, 46, 44, 0.2) 62%, rgba(10, 16, 13, 0) 100%);
+            border: 2px solid rgba(183, 194, 120, 0.55);
+            box-shadow: 0 0 20px rgba(140, 150, 87, 0.75), inset 0 0 12px rgba(40, 58, 42, 0.7);
             opacity: 0;
             pointer-events: none;
+            filter: saturate(0.8) contrast(1.15);
         }
 
         .bat-swing {
@@ -280,7 +282,7 @@
         const bulletSpeed = 22;
         const bullets = [];
         const evilTungs = [];
-        const poisonImpacts = [];
+        const pollutionImpacts = [];
         const meleeEffects = [];
         let lastMeleeAt = 0;
 
@@ -334,12 +336,12 @@
             if (e.code === 'Space') keys.space = false;
         });
 
-        function spawnPoisonImpact(x, y, z, scale = 1) {
+        function spawnPollutionImpact(x, y, z, scale = 1) {
             const impact = document.createElement('div');
-            impact.className = 'poison-impact';
+            impact.className = 'pollution-impact';
             impact.style.transform = `translate3d(${x}px, ${y}px, ${z}px) scale(${scale})`;
             translationRig.appendChild(impact);
-            poisonImpacts.push({
+            pollutionImpacts.push({
                 x,
                 y,
                 z,
@@ -467,12 +469,12 @@
                 if (dot < 0.2) return;
 
                 enemy.hp -= 1;
-                spawnPoisonImpact(enemy.x, enemy.y, enemy.z, 1.1 + Math.random() * 0.8);
+                spawnPollutionImpact(enemy.x, enemy.y, enemy.z, 1.1 + Math.random() * 0.8);
 
                 if (enemy.hp <= 0) {
                     enemy.alive = false;
                     enemy.element.remove();
-                    spawnPoisonImpact(enemy.x, enemy.y + 10, enemy.z, 1.8);
+                    spawnPollutionImpact(enemy.x, enemy.y + 10, enemy.z, 1.8);
                 }
             });
         }
@@ -534,11 +536,11 @@
 
                     if (dist < 38) {
                         enemy.hp -= bullet.damage;
-                        spawnPoisonImpact(enemy.x, enemy.y, enemy.z, 1.5);
+                        spawnPollutionImpact(enemy.x, enemy.y, enemy.z, 1.5);
                         if (enemy.hp <= 0) {
                             enemy.alive = false;
                             enemy.element.remove();
-                            spawnPoisonImpact(enemy.x, enemy.y + 10, enemy.z, 1.9);
+                            spawnPollutionImpact(enemy.x, enemy.y + 10, enemy.z, 1.9);
                         }
                         collision = true;
                         break;
@@ -547,7 +549,7 @@
 
                 if (collision || bullet.life <= 0 || Math.abs(bullet.x) > 620 || Math.abs(bullet.z) > 620 || bullet.y < -60 || bullet.y > 260) {
                     if (!collision) {
-                        spawnPoisonImpact(bullet.x, bullet.y, bullet.z, 1.2);
+                        spawnPollutionImpact(bullet.x, bullet.y, bullet.z, 1.2);
                     }
                     bullet.element.remove();
                     bullets.splice(i, 1);
@@ -558,9 +560,9 @@
             }
         }
 
-        function updatePoisonImpacts() {
-            for (let i = poisonImpacts.length - 1; i >= 0; i--) {
-                const impact = poisonImpacts[i];
+        function updatePollutionImpacts() {
+            for (let i = pollutionImpacts.length - 1; i >= 0; i--) {
+                const impact = pollutionImpacts[i];
                 impact.life -= 1;
                 const progress = 1 - impact.life / 18;
                 impact.element.style.opacity = String(1 - progress);
@@ -568,7 +570,7 @@
 
                 if (impact.life <= 0) {
                     impact.element.remove();
-                    poisonImpacts.splice(i, 1);
+                    pollutionImpacts.splice(i, 1);
                 }
             }
         }
@@ -593,11 +595,11 @@
                 updateMovement();
             }
 
-            rotationRig.style.transform = `rotateX(${-rotX}deg) rotateY(${-rotY}deg)`;
-            translationRig.style.transform = `translate3d(${-camX}px, ${-camY}px, ${-camZ}px)`;
+            rotationRig.style.transform = `rotateX(${rotX}deg) rotateY(${rotY}deg)`;
+            translationRig.style.transform = `translate3d(${-camX}px, ${camY}px, ${-camZ}px)`;
 
             updateBullets();
-            updatePoisonImpacts();
+            updatePollutionImpacts();
             updateMeleeEffects();
             evilTungs.forEach(updateEnemyVisual);
 
