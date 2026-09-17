@@ -60,11 +60,10 @@
     
     <div id="crosshair"></div>
 
-    <!-- The entire application logic is contained safely inside this JS module -->
-    <script type="module">
-        // Import Three.js reliably as a module to fix the loading sequence error
-        import * as THREE from 'https://cloudflare.com';
+    <!-- We use unpkg via standard script tags to completely bypass CORS module blocks -->
+    <script src="https://unpkg.com"></script>
 
+    <script>
         // --- 1. SETUP ENGINE SCENE ---
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x1a1a2e);
@@ -90,7 +89,6 @@
         scene.add(grid);
 
         // --- 3. THE CUBE (Stationary) ---
-        // Creating distinct colored face materials matching your original design
         const materials = [
             new THREE.MeshStandardMaterial({ color: 0x2ecc40 }), // Right (Green)
             new THREE.MeshStandardMaterial({ color: 0xffdc00 }), // Left (Yellow)
@@ -158,7 +156,7 @@
                 const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
                 const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
 
-                // Lock translations to the plane of the floor (prevents flying when looking up)
+                // Lock translations to the plane of the floor
                 forward.y = 0;
                 right.y = 0;
                 forward.normalize();
