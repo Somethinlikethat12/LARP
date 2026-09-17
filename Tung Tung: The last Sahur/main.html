@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Retro JRPG</title>
+    <style>
+        body {
+            margin: 0;
+            background: #111;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        canvas {
+            border: 4px solid #fff;
+            /* Keeps pixel art sharp when scaling */
+            image-rendering: pixelated; 
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <script src="game.js"></script>
+</body>
+</html>
