@@ -3,16 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FPS Camera (WASD + Mouse)</title>
+    <title>3D Scene with FPS Camera</title>
     <style>
         body {
             margin: 0;
             overflow: hidden;
-            background-color: #000;
+            background-color: #1a1a2e;
             font-family: sans-serif;
         }
 
-        /* Overlay text asking user to click */
+        /* Overlay prompting the user to activate look mode */
         #instructions {
             position: absolute;
             width: 100%;
@@ -22,7 +22,7 @@
             justify-content: center;
             align-items: center;
             color: white;
-            background: rgba(0, 0, 0, 0.7);
+            background: rgba(0, 0, 0, 0.75);
             cursor: pointer;
             z-index: 10;
             text-align: center;
@@ -31,7 +31,7 @@
         h1 { margin-bottom: 10px; font-size: 2rem; }
         p { color: #aaa; }
 
-        /* Crosshair in the center of screen */
+        /* Reticle centered on your viewport */
         #crosshair {
             position: absolute;
             top: 50%;
@@ -60,60 +60,59 @@
     
     <div id="crosshair"></div>
 
-    <!-- Include Three.js library -->
+    <!-- Include Three.js via CDN -->
     <script src="https://cloudflare.com"></script>
 
     <script>
-        // --- 1. SETUP THE 3D SCENE ---
+        // --- 1. SETUP ENGINE SCENE ---
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x1a1a2e);
-        scene.fog = new THREE.FogExp2(0x1a1a2e, 0.05);
 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.y = 2; // Set camera at human eye-level
+        // Start the camera back and slightly up so you can see the cube instantly
+        camera.position.set(0, 2, 8); 
 
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
-        // --- 2. ADD LIGHTS & ENVIRONMENT ---
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+        // --- 2. LIGHTING ---
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
         scene.add(ambientLight);
 
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6);
-        directionalLight.position.set(10, 20, 10);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.7);
+        directionalLight.position.set(5, 10, 7);
         scene.add(directionalLight);
 
-        // Grid Floor
-        const grid = new THREE.GridHelper(200, 50, 0x4444ff, 0x444444);
+        // Grid floor reference layout
+        const grid = new THREE.GridHelper(100, 40, 0x4444ff, 0x333333);
         scene.add(grid);
 
-        // Scatter random colorful cubes to give depth to movement
-        for (let i = 0; i < 50; i++) {
-            const geometry = new THREE.BoxGeometry(2, Math.random() * 5 + 1, 2);
-            const material = new THREE.MeshStandardMaterial({ 
-                color: Math.random() * 0xffffff,
-                roughness: 0.4 
-            });
-            const cube = new THREE.Mesh(geometry, material);
-            
-            cube.position.x = (Math.random() - 0.5) * 80;
-            cube.position.z = (Math.random() - 0.5) * 80;
-            cube.position.y = geometry.parameters.height / 2; // Sit on floor
-            scene.add(cube);
-        }
+        // --- 3. THE CUBE (Stationary) ---
+        // Creating distinct colored face materials just like your original CSS styling
+        const materials = [
+            new THREE.MeshStandardMaterial({ color: 0x2ecc40 }), // Right (Green)
+            new THREE.MeshStandardMaterial({ color: 0xffdc00 }), // Left (Yellow)
+            new THREE.MeshStandardMaterial({ color: 0xb10dc9 }), // Top (Purple)
+            new THREE.MeshStandardMaterial({ color: 0xff851b }), // Bottom (Orange)
+            new THREE.MeshStandardMaterial({ color: 0xff4136 }), // Front (Red)
+            new THREE.MeshStandardMaterial({ color: 0x0074d9 })  // Back (Blue)
+        ];
 
-        // --- 3. CONTROLS STATE ---
+        const geometry = new THREE.BoxGeometry(3, 3, 3);
+        const centralCube = new THREE.Mesh(geometry, materials);
+        centralCube.position.set(0, 1.5, 0); // Positioned flat on the grid floor
+        scene.add(centralCube);
+
+        // --- 4. CONTROLS STATE & LOGIC ---
         const keys = { w: false, a: false, s: false, d: false };
-        let moveSpeed = 0.15;
-        
-        // Rotation trackers
-        let yaw = 0;   // Left / Right look
-        let pitch = 0; // Up / Down look
+        const moveSpeed = 0.12;
+        let yaw = 0;   // Left-right viewing angle
+        let pitch = 0; // Up-down viewing angle
 
         const instructions = document.getElementById('instructions');
 
-        // --- 4. POINTER LOCK & MOUSE LOOK ---
+        // Capture mouse lock execution context
         instructions.addEventListener('click', () => {
             document.body.requestPointerLock();
         });
@@ -126,22 +125,21 @@
             }
         });
 
+        // Track Pointer Orientation Vectors
         document.addEventListener('mousemove', (e) => {
             if (document.pointerLockElement !== document.body) return;
 
-            // Sensitivity factor
-            const sensitivity = 0.002;
+            const sensitivity = 0.0025;
             yaw -= e.movementX * sensitivity;
             pitch -= e.movementY * sensitivity;
 
-            // Clamp vertical looking so you don't flip upside down
-            pitch = Math.max(-Math.PI / 2.1, Math.min(Math.PI / 2.1, pitch));
+            // Prevent rolling completely upside down upside down
+            pitch = Math.max(-Math.PI / 2.05, Math.min(Math.PI / 2.05, pitch));
 
-            // Apply Euler rotations directly to camera
             camera.quaternion.setFromEuler(new THREE.Euler(pitch, yaw, 0, 'YXZ'));
         });
 
-        // --- 5. KEYBOARD INPUT ---
+        // Track Key Triggers
         document.addEventListener('keydown', (e) => {
             if (e.key.toLowerCase() in keys) keys[e.key.toLowerCase()] = true;
         });
@@ -150,22 +148,21 @@
             if (e.key.toLowerCase() in keys) keys[e.key.toLowerCase()] = false;
         });
 
-        // --- 6. GAME LOOP ---
+        // --- 5. SYSTEM RENDER ANIMATION TICK ---
         function animate() {
             requestAnimationFrame(animate);
 
             if (document.pointerLockElement === document.body) {
-                // Determine forward/backward and sideways vector directions
+                // Compute look and strafe vector transforms matching current head orientation
                 const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
                 const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
 
-                // Project movements directly onto the flat floor plane (ignore flying up/down)
+                // Lock translations to the plane of the floor (prevents flying when looking into space)
                 forward.y = 0;
                 right.y = 0;
                 forward.normalize();
                 right.normalize();
 
-                // Apply WASD velocity vector
                 if (keys.w) camera.position.addScaledVector(forward, moveSpeed);
                 if (keys.s) camera.position.addScaledVector(forward, -moveSpeed);
                 if (keys.d) camera.position.addScaledVector(right, moveSpeed);
@@ -175,7 +172,7 @@
             renderer.render(scene, camera);
         }
 
-        // Window Resizing
+        // Adjust aspect ratio automatically on window adjustment
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
