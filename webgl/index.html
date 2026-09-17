@@ -193,9 +193,16 @@
         });
 
         function updateScene() {
-            let prevel= velocityX;
+           
             if (document.pointerLockElement === document.body) {
                 // --- 1. HORIZONTAL CAMERA TRANSLATION ---
+            if (keys.w) { 
+            velocityX = (speed * accel); 
+            accel = accel * 1.01;
+        } else {
+            // Reset acceleration when not pressing W
+            accel = 1; 
+        }
                 let angleRad = rotY * Math.PI / 180;
                 let sin = Math.sin(angleRad);
                 let cos = Math.cos(angleRad);
@@ -230,8 +237,8 @@
             
             // CSS matrices use an inverted coordinate axis system for translations
             translationRig.style.transform = `translate3d(${-camX}px, ${camY}px, ${camZ}px)`;
-            if(prevel==velocityX)
-            velocityX=0;
+            
+            
             requestAnimationFrame(updateScene);
         }
 
