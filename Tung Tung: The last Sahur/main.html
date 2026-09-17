@@ -3,32 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tung Tung: The Last Sahur</title>
-    <link rel="stylesheet" href="stylesheet.css">
+    <title>Tung Tung: The Last Sahur (Side-Scroller)</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-
     <div id="game-container">
-        <!-- The Game Screen -->
-        <canvas id="gameCanvas" width="800" height="600"></canvas>
-
-        <!-- PG Black Souls UI Overlays -->
+        <canvas id="gameCanvas" width="800" height="450"></canvas>
+        
+        <!-- JRPG / Souls Style UI Overlays -->
         <div id="ui-layer">
-            <!-- Sanity/Clarity Meter -->
-            <div id="sanity-bar-container">
+            <div id="clarity-bar-container">
                 <span>Sahur Clarity:</span>
-                <div id="sanity-bar"><div id="sanity-fill"></div></div>
-            </div>
-
-            <!-- JRPG Style Dialogue & Interactive Text Box -->
-            <div id="textbox" class="hidden">
-                <p id="textbox-speaker">NPC Name</p>
-                <p id="textbox-text">This is text dialogue...</p>
-                <button id="textbox-btn" onclick="closeTextbox()">Next</button>
+                <div id="clarity-bar"><div id="clarity-fill"></div></div>
             </div>
         </div>
     </div>
-
     <script src="game.js"></script>
 </body>
 </html>

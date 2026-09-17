@@ -1,167 +1,134 @@
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
-const TILE_SIZE = 50;
-const COLS = 16;
-const ROWS = 12;
-
-// --- GAME STATE ---
-let gameState = {
-    clarity: 100, // Our PG version of Sanity
-    cluesFound: 0,
-    inDialogue: false
+// --- IMAGE PRELOADING ---
+const sprites = {
+    player: new Image(),
+    tungTungClan: new Image(),
+    angelTung: new Image(),
+    evilTung: new Image(),
+    devilTung: new Image()
 };
 
-// 0 = Walkable, 1 = Dense Woods/Wall, 3 = Angel Tung NPC, 4 = Corrupted Object
-const map = [
-    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-    [1,0,0,0,1,0,0,0,0,0,0,0,0,0,0,1],
-    [1,0,1,0,1,0,1,1,1,1,1,0,1,1,0,1],
-    [1,0,1,0,0,0,0,0,0,0,1,0,1,4,0,1],
-    [1,0,1,1,1,1,1,0,1,0,1,0,1,1,0,1],
-    [1,0,0,0,0,3,1,0,1,0,0,0,0,0,0,1],
-    [1,1,1,1,0,1,1,0,1,1,1,1,1,1,0,1],
-    [1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1],
-    [1,0,1,1,1,1,1,1,1,1,1,1,0,1,0,1],
-    [1,0,1,4,0,0,0,0,0,0,0,1,0,0,0,1],
-    [1,0,0,0,0,1,0,1,0,1,0,0,0,1,0,1],
-    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
-];
+sprites.player.src = 'player.png';
+sprites.tungTungClan.src = 'tungtungtung.png';
+sprites.angelTung.src = 'angel Tung.png';
+sprites.evilTung.src = 'eviltung.png';
+sprites.devilTung.src = 'devil Tung.png';
+
+// --- SIDE-SCROLLER PHYSICS ENGINE ---
+const GRAVITY = 0.5;
+const FLOOR_Y = 370; // Pixel line where the ground sits
 
 const player = {
-    x: TILE_SIZE * 1,
-    y: TILE_SIZE * 1,
-    size: TILE_SIZE - 10,
-    speed: 4
+    x: 100,
+    y: 200,
+    width: 50,
+    height: 60,
+    velocityX: 0,
+    velocityY: 0,
+    speed: 5,
+    jumpForce: -12,
+    isGrounded: false
 };
 
+// --- SIMPLIFIED PLATFORMS & ENTITIES ---
+// Simple bounding boxes representing flat surfaces to step on
+const platforms = [
+    { x: 0, y: FLOOR_Y, width: 1200, height: 80 }, // Main Floor
+    { x: 300, y: 260, width: 200, height: 20 },   // Floating ledge
+    { x: 600, y: 180, width: 150, height: 20 }    // Higher ledge
+];
+
+// World objects populated with your specific clan images
+const entities = [
+    { x: 200, y: FLOOR_Y - 50, w: 50, h: 50, type: 'angel', img: sprites.angelTung },
+    { x: 400, y: 210, w: 50, h: 50, type: 'tungtung', img: sprites.tungTungClan },
+    { x: 650, y: 130, w: 50, h: 50, type: 'enemy', img: sprites.evilTung },
+    { x: 950, y: FLOOR_Y - 70, w: 70, h: 70, type: 'boss', img: sprites.devilTung }
+];
+
 const keys = {};
-window.addEventListener("keydown", e => { if(!gameState.inDialogue) keys[e.key] = true; });
+window.addEventListener("keydown", e => keys[e.key] = true);
 window.addEventListener("keyup", e => keys[e.key] = false);
 
-// --- COLLISION ENGINE ---
-function isSolid(x, y) {
-    const tileX = Math.floor(x / TILE_SIZE);
-    const tileY = Math.floor(y / TILE_SIZE);
-    
-    if (tileX < 0 || tileX >= COLS || tileY < 0 || tileY >= ROWS) return true;
-    
-    // Custom interaction checks (Stepping on dynamic elements)
-    let tileType = map[tileY][tileX];
-    if (tileType === 1) return true; // Direct solid block
-    return false;
-}
-
-function checkCollision(nextX, nextY) {
-    return isSolid(nextX, nextY) || 
-           isSolid(nextX + player.size, nextY) || 
-           isSolid(nextX, nextY + player.size) || 
-           isSolid(nextX + player.size, nextY + player.size);
-}
-
-// --- JRPG INTERACTION SYSTEM (Action Key: 'e') ---
-window.addEventListener("keydown", e => {
-    if (e.key === "e" || e.key === "E") {
-        if (gameState.inDialogue) {
-            closeTextbox();
-            return;
-        }
-
-        // Check tiles right in front of the center of player
-        let centerX = Math.floor((player.x + player.size/2) / TILE_SIZE);
-        let centerY = Math.floor((player.y + player.size/2) / TILE_SIZE);
-
-        // Check adjacent tiles for interactables
-        checkInteract(centerX, centerY);
-        checkInteract(centerX + 1, centerY);
-        checkInteract(centerX - 1, centerY);
-        checkInteract(centerX, centerY + 1);
-        checkInteract(centerX, centerY - 1);
-    }
-});
-
-function checkInteract(tx, ty) {
-    if(tx < 0 || tx >= COLS || ty < 0 || ty >= ROWS) return;
-    
-    let target = map[ty][tx];
-
-    if (target === 3) { // Angel Tung NPC
-        triggerDialogue("Angel Tung Elder", "Young Sahur... Devil Tung has distorted the memories of the world. Find the lost dream tokens to restore balance!");
-    } 
-    else if (target === 4) { // Corrupted Dream Object
-        triggerDialogue("Distorted Memory", "You look at the strange relic. A dark whispers cloud your mind... Your clarity drops, but you find a missing timeline fragment!");
-        map[ty][tx] = 0; // Remove item after collection
-        gameState.cluesFound++;
-        updateClarity(-25);
-    }
-}
-
-// --- UI LOGIC ---
-function triggerDialogue(speaker, text) {
-    gameState.inDialogue = true;
-    // Reset running keys
-    for(let k in keys) keys[k] = false;
-
-    document.getElementById("textbox-speaker").innerText = speaker;
-    document.getElementById("textbox-text").innerText = text;
-    document.getElementById("textbox").classList.remove("hidden");
-}
-
-function closeTextbox() {
-    gameState.inDialogue = false;
-    document.getElementById("textbox").classList.add("hidden");
-    
-    if (gameState.clarity <= 0) {
-        triggerDialogue("GAME OVER", "Your Clarity completely vanished into the dream world. You became a wandering Tung... (Refresh to retry)");
-        gameState.inDialogue = true; // Freeze game
-    }
-}
-
-function updateClarity(amount) {
-    gameState.clarity = Math.max(0, Math.min(100, gameState.clarity + amount));
-    document.getElementById("sanity-fill").style.width = gameState.clarity + "%";
-}
-
-// --- ENGINE UPDATE & LOOP ---
 function update() {
-    if (gameState.inDialogue) return;
+    // 1. Horizontal Movement
+    player.velocityX = 0;
+    if (keys["ArrowLeft"] || keys["a"]) player.velocityX = -player.speed;
+    if (keys["ArrowRight"] || keys["d"]) player.velocityX = player.speed;
 
-    let nextX = player.x;
-    let nextY = player.y;
+    // 2. Jumping Input
+    if ((keys["ArrowUp"] || keys["w"] || keys[" "]) && player.isGrounded) {
+        player.velocityY = player.jumpForce;
+        player.isGrounded = false;
+    }
 
-    if (keys["ArrowUp"] || keys["w"]) nextY -= player.speed;
-    if (keys["ArrowDown"] || keys["s"]) nextY += player.speed;
-    if (keys["ArrowLeft"] || keys["a"]) nextX -= player.speed;
-    if (keys["ArrowRight"] || keys["d"]) nextX += player.speed;
+    // 3. Apply Gravity
+    player.velocityY += GRAVITY;
 
-    if (!checkCollision(nextX, player.y)) player.x = nextX;
-    if (!checkCollision(player.x, nextY)) player.y = nextY;
+    // 4. Update Positions
+    player.x += player.velocityX;
+    player.y += player.velocityY;
+
+    // 5. Hard Boundaries & Platform Collisions
+    player.isGrounded = false;
+    for (let plat of platforms) {
+        // Check if player is falling down into the top surface of a platform
+        if (player.x + player.width > plat.x &&
+            player.x < plat.x + plat.width &&
+            player.y + player.height >= plat.y &&
+            player.y + player.height - player.velocityY <= plat.y) {
+            
+            player.y = plat.y - player.height;
+            player.velocityY = 0;
+            player.isGrounded = true;
+        }
+    }
+
+    // Lock boundaries to prevent walking backward past the start
+    if (player.x < 0) player.x = 0;
 }
 
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    for (let r = 0; r < ROWS; r++) {
-        for (let c = 0; c < COLS; c++) {
-            if (map[r][c] === 1) ctx.fillStyle = "#111625"; // Ominous trees/walls
-            else if (map[r][c] === 3) ctx.fillStyle = "#45a29e"; // Teal for Angel Clan
-            else if (map[r][c] === 4) ctx.fillStyle = "#ff0055"; // Bright glitch neon for clues
-            else ctx.fillStyle = "#1c1d24"; // Regular walking floor
-            
-            ctx.fillRect(c * TILE_SIZE, r * TILE_SIZE, TILE_SIZE, TILE_SIZE);
-            ctx.strokeStyle = "#10131a";
-            ctx.strokeRect(c * TILE_SIZE, r * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+    // --- CAMERA SYSTEM (SIDE SCROLLER TRACKING) ---
+    // Camera shifts left as the player runs right
+    let cameraX = 300 - player.x;
+    if (cameraX > 0) cameraX = 0; // Lock at starting screen boundary
+
+    ctx.save();
+    ctx.translate(cameraX, 0); // Everything drawn inside this block shifts dynamically!
+
+    // 1. Draw Platforms / Ground
+    ctx.fillStyle = "#1c2331";
+    for (let plat of platforms) {
+        ctx.fillRect(plat.x, plat.y, plat.width, plat.height);
+        ctx.strokeStyle = "#45a29e";
+        ctx.strokeRect(plat.x, plat.y, plat.width, plat.height);
+    }
+
+    // 2. Draw Clan Entities and Enemies
+    for (let ent of entities) {
+        if (ent.img.complete && ent.img.width > 0) {
+            ctx.drawImage(ent.img, ent.x, ent.y, ent.w, ent.h);
+        } else {
+            // Fallback colorful blocks if image fails to render
+            ctx.fillStyle = ent.type === 'enemy' ? '#ff0055' : '#66fcf1';
+            ctx.fillRect(ent.x, ent.y, ent.w, ent.h);
         }
     }
 
-    // Draw the New Sahur (Gold block avatar)
-    ctx.fillStyle = "#66fcf1";
-    ctx.fillRect(player.x, player.y, player.size, player.size);
-    
-    // Basic text prompt indicator if standing near something
-    ctx.fillStyle = "rgba(255,255,255,0.4)";
-    ctx.font = "12px sans-serif";
-    ctx.fillText("WASD to Move | Press E to Interact", 550, 30);
+    // 3. Draw Player Character (The Chosen Sahur)
+    if (sprites.player.complete && sprites.player.width > 0) {
+        ctx.drawImage(sprites.player, player.x, player.y, player.width, player.height);
+    } else {
+        ctx.fillStyle = "#e0a96d"; // Ash Gold block fallback
+        ctx.fillRect(player.x, player.y, player.width, player.height);
+    }
+
+    ctx.restore(); // Reset translation context for fixed UI elements
 }
 
 function gameLoop() {
