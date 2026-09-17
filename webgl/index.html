@@ -14,6 +14,7 @@
             font-family: sans-serif;
             perspective: 600px;
             perspective-origin: 50% 50%;
+            cursor: crosshair;
         }
 
         #instructions {
@@ -82,7 +83,8 @@
             top: 50%; left: 50%;
             margin-left: -75px; margin-top: -75px;
             transform-style: preserve-3d;
-            transform: translate3d(0, -75px, 0); /* Raised so it sits flat on the platform */
+            transform: translate3d(0, -75px, 0);
+            display: none;
         }
 
         .face {
@@ -98,13 +100,129 @@
         .left   { background: #ffdc00; transform: rotateY(-90deg) translateZ(75px); }
         .top    { background: #b10dc9; transform: rotateX( 90deg) translateZ(75px); }
         .bottom { background: #ff851b; transform: rotateX(-90deg) translateZ(75px); }
+
+        .bat-projectile {
+            position: absolute;
+            width: 26px;
+            height: 14px;
+            left: 0;
+            top: 0;
+            border-radius: 999px;
+            background: linear-gradient(90deg, #1a1f2b 0%, #f9f2a7 18%, #d9b94f 50%, #b86d2b 100%);
+            box-shadow: 0 0 14px rgba(255, 212, 88, 0.9);
+            pointer-events: none;
+            transform-style: preserve-3d;
+        }
+
+        .bat-projectile::before,
+        .bat-projectile::after {
+            content: '';
+            position: absolute;
+            top: 1px;
+            width: 16px;
+            height: 10px;
+            background: rgba(18, 20, 33, 0.9);
+            clip-path: polygon(0 50%, 100% 0, 70% 50%, 100% 100%);
+        }
+
+        .bat-projectile::before {
+            left: -11px;
+            transform: scaleX(-1);
+        }
+
+        .bat-projectile::after {
+            right: -11px;
+        }
+
+        .evil-tung {
+            position: absolute;
+            width: 56px;
+            height: 56px;
+            left: 0;
+            top: 0;
+            pointer-events: none;
+            filter: drop-shadow(0 0 12px rgba(109, 255, 157, 0.7));
+        }
+
+        .evil-tung .body {
+            position: absolute;
+            inset: 10px 10px 10px 10px;
+            background: linear-gradient(135deg, #1d2d1f 0%, #3ccf7a 32%, #0d3b23 100%);
+            border: 3px solid rgba(181, 255, 217, 0.95);
+            border-radius: 18px 18px 22px 22px;
+            transform: rotateX(18deg);
+        }
+
+        .evil-tung .head {
+            position: absolute;
+            left: 12px;
+            top: 2px;
+            width: 32px;
+            height: 20px;
+            background: linear-gradient(180deg, #8ef7b3, #1d7347);
+            border: 2px solid rgba(197, 255, 216, 0.9);
+            border-radius: 50% 50% 45% 45%;
+        }
+
+        .evil-tung .eye {
+            position: absolute;
+            top: 9px;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #f4fff7;
+            box-shadow: 0 0 8px rgba(255, 255, 255, 0.9);
+        }
+
+        .evil-tung .left-eye { left: 20px; }
+        .evil-tung .right-eye { right: 20px; }
+
+        .evil-tung .wing {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            top: 18px;
+            background: rgba(81, 255, 176, 0.3);
+            border: 2px solid rgba(160, 255, 210, 0.9);
+            clip-path: polygon(0 50%, 100% 0, 70% 50%, 100% 100%);
+        }
+
+        .evil-tung .left-wing { left: -4px; }
+        .evil-tung .right-wing { right: -4px; transform: scaleX(-1); }
+
+        .poison-impact {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(209, 255, 116, 0.95) 0%, rgba(107, 240, 153, 0.8) 26%, rgba(51, 155, 84, 0.35) 56%, rgba(18, 64, 35, 0) 100%);
+            box-shadow: 0 0 18px rgba(87, 255, 129, 0.8);
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .bat-swing {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 150px;
+            height: 60px;
+            pointer-events: none;
+            background: linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(255, 216, 117, 0.85) 18%, rgba(138, 93, 42, 0.9) 38%, rgba(255, 216, 117, 0.85) 60%, rgba(0,0,0,0) 100%);
+            border-radius: 50%;
+            box-shadow: 0 0 12px rgba(255, 189, 56, 0.8);
+            clip-path: polygon(0 50%, 34% 0, 72% 16%, 100% 50%, 72% 84%, 34% 100%);
+            opacity: 0.9;
+        }
     </style>
 </head>
 <body>
 
     <div id="instructions">
-        <h1>Click to Explore the Platform</h1>
-        <p>Move: WASD | Look: Mouse<br>Jump: SPACEBAR | Exit: ESC</p>
+        <h1>Click to Enter FPS Mode</h1>
+        <p>Move: WASD | Look: Mouse<br>Jump: SPACEBAR | Bat Shot: Left Click | Bat Swing: Right Click / F | Exit: ESC</p>
     </div>
     
     <div id="crosshair"></div>
@@ -139,27 +257,32 @@
         const translationRig = document.getElementById('translationRig');
         const instructions = document.getElementById('instructions');
 
-        // Input Trackers
-        let keys = { w: false, a: false, s: false, d: false, space: false };
-        
-        // Camera Spatial Vectors
+        let keys = { w: false, a: false, s: false, d: false, space: false, f: false };
+
         let camX = 0;
-        let camY = 120; // Standing eye-height relative to the platform plane (0)
+        let camY = 120;
         let camZ = -400;
-        
+
         let rotX = 0;
         let rotY = 0;
 
-        // Physics Constants
         let velocityY = 0;
-        const gravity = 0.4;
+        const gravity = 0.45;
         const jumpForce = 9;
-        const floorHeight = 120; // Default standing position above y=0 platform plane
+        const floorHeight = 120;
         let isGrounded = true;
-        let accel = 1;
-        let velocityX = 0;
 
-        const speed = 7;
+        const maxMoveSpeed = 7;
+        const acceleration = 0.6;
+        const deceleration = 0.9;
+        let moveSpeed = 0;
+
+        const bulletSpeed = 22;
+        const bullets = [];
+        const evilTungs = [];
+        const poisonImpacts = [];
+        const meleeEffects = [];
+        let lastMeleeAt = 0;
 
         instructions.addEventListener('click', () => {
             document.body.requestPointerLock();
@@ -169,20 +292,39 @@
             instructions.style.display = (document.pointerLockElement === document.body) ? 'none' : 'flex';
         });
 
+        document.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+        });
+
         document.addEventListener('mousemove', (e) => {
             if (document.pointerLockElement !== document.body) return;
-            
+
             rotY -= e.movementX * 0.15;
             rotX += e.movementY * 0.15;
             rotX = Math.max(-75, Math.min(75, rotX));
         });
 
+        document.addEventListener('mousedown', (e) => {
+            if (document.pointerLockElement !== document.body) return;
+
+            if (e.button === 0) {
+                shootBatProjectile();
+            }
+
+            if (e.button === 2) {
+                doMeleeBatSwing();
+            }
+        });
+
         document.addEventListener('keydown', (e) => {
             const key = e.key.toLowerCase();
             if (key in keys) keys[key] = true;
+            if (key === 'f') {
+                doMeleeBatSwing();
+            }
             if (e.code === 'Space') {
                 keys.space = true;
-                e.preventDefault(); // Stop screen from scrolling down
+                e.preventDefault();
             }
         });
 
@@ -192,56 +334,277 @@
             if (e.code === 'Space') keys.space = false;
         });
 
-        function updateScene() {
-           
-            if (document.pointerLockElement === document.body) {
-                // --- 1. HORIZONTAL CAMERA TRANSLATION ---
-            if (keys.w) { 
-            velocityX = (speed * accel); 
-            accel = accel * 1.01;
-        } else {
-            // Reset acceleration when not pressing W
-            accel = 1; 
+        function spawnPoisonImpact(x, y, z, scale = 1) {
+            const impact = document.createElement('div');
+            impact.className = 'poison-impact';
+            impact.style.transform = `translate3d(${x}px, ${y}px, ${z}px) scale(${scale})`;
+            translationRig.appendChild(impact);
+            poisonImpacts.push({
+                x,
+                y,
+                z,
+                scale,
+                life: 18,
+                element: impact
+            });
         }
-                let angleRad = rotY * Math.PI / 180;
-                let sin = Math.sin(angleRad);
-                let cos = Math.cos(angleRad);
 
-                if (keys.w) { velocityX=(speed*accel); camX += sin * velocityX; camZ += cos * velocityX; accel = accel*1.01}
-                if (keys.s) { camX -= sin * speed; camZ -= cos * speed; }
-                if (keys.a) { camX += cos * speed; camZ -= sin * speed; }
-                if (keys.d) { camX -= cos * speed; camZ += sin * speed; }
-                
-                // --- 2. VERTICAL JUMP PHYSICS & GRAVITY ---
-                if (keys.space && isGrounded) {
-                    velocityY = jumpForce;
-                    isGrounded = false;
-                }
+        function buildEvilTung(x, y, z) {
+            const enemy = document.createElement('div');
+            enemy.className = 'evil-tung';
+            enemy.innerHTML = `
+                <div class="wing left-wing"></div>
+                <div class="head"></div>
+                <div class="eye left-eye"></div>
+                <div class="eye right-eye"></div>
+                <div class="body"></div>
+                <div class="wing right-wing"></div>
+            `;
+            translationRig.appendChild(enemy);
 
-                // If in mid-air, apply gravity pull
-                if (!isGrounded) {
-                    velocityY -= gravity;
-                    camY += velocityY; // Positive velocity pushes camera higher up
+            const evil = {
+                x,
+                y,
+                z,
+                hp: 3,
+                element: enemy,
+                alive: true,
+            };
 
-                    // Land back down check
-                    if (camY <= floorHeight) {
-                        camY = floorHeight;
-                        velocityY = 0;
-                        isGrounded = true;
-                    }
-                }
+            evilTungs.push(evil);
+            updateEnemyVisual(evil);
+        }
+
+        function updateEnemyVisual(enemy) {
+            if (!enemy.alive) {
+                enemy.element.style.opacity = '0';
+                return;
             }
 
-            // --- 3. RENDER ENVIRONMENT TRANSFORMS ---
-            rotationRig.style.transform = `rotateX(${rotX}deg) rotateY(${rotY}deg)`;
-            
-            // CSS matrices use an inverted coordinate axis system for translations
-            translationRig.style.transform = `translate3d(${-camX}px, ${camY}px, ${camZ}px)`;
-            
-            
+            enemy.element.style.transform = `translate3d(${enemy.x}px, ${enemy.y}px, ${enemy.z}px)`;
+            enemy.element.style.opacity = '1';
+        }
+
+        function spawnEvilTungs() {
+            const spawnPoints = [
+                { x: 260, y: 60, z: -150 },
+                { x: -280, y: 60, z: -220 },
+                { x: 100, y: 60, z: 260 },
+                { x: -180, y: 60, z: 180 },
+                { x: 420, y: 60, z: 40 },
+                { x: -360, y: 60, z: 40 }
+            ];
+
+            spawnPoints.forEach((spawn) => buildEvilTung(spawn.x, spawn.y, spawn.z));
+        }
+
+        function shootBatProjectile() {
+            const pitch = rotX * Math.PI / 180;
+            const yaw = rotY * Math.PI / 180;
+
+            const dirX = Math.sin(yaw) * Math.cos(pitch);
+            const dirY = -Math.sin(pitch);
+            const dirZ = Math.cos(yaw) * Math.cos(pitch);
+
+            const bullet = {
+                x: camX + dirX * 22,
+                y: camY - 8 + dirY * 22,
+                z: camZ + dirZ * 22,
+                vx: dirX * bulletSpeed,
+                vy: dirY * bulletSpeed,
+                vz: dirZ * bulletSpeed,
+                life: 90,
+                element: null,
+                damage: 1,
+            };
+
+            const element = document.createElement('div');
+            element.className = 'bat-projectile';
+            element.style.transform = `translate3d(${bullet.x}px, ${bullet.y}px, ${bullet.z}px)`;
+            translationRig.appendChild(element);
+            bullet.element = element;
+            bullets.push(bullet);
+        }
+
+        function doMeleeBatSwing() {
+            const now = performance.now();
+            if (now - lastMeleeAt < 420) return;
+            lastMeleeAt = now;
+
+            const melee = {
+                x: camX,
+                y: camY - 18,
+                z: camZ,
+                yaw: rotY,
+                pitch: rotX,
+                life: 12,
+                element: null,
+            };
+
+            const visual = document.createElement('div');
+            visual.className = 'bat-swing';
+            translationRig.appendChild(visual);
+            melee.element = visual;
+            meleeEffects.push(melee);
+
+            const pitch = rotX * Math.PI / 180;
+            const yaw = rotY * Math.PI / 180;
+            const dirX = Math.sin(yaw) * Math.cos(pitch);
+            const dirY = -Math.sin(pitch);
+            const dirZ = Math.cos(yaw) * Math.cos(pitch);
+
+            evilTungs.forEach((enemy) => {
+                if (!enemy.alive) return;
+
+                const dx = enemy.x - camX;
+                const dy = enemy.y - (camY - 8);
+                const dz = enemy.z - camZ;
+                const dist = Math.hypot(dx, dy, dz);
+
+                if (dist > 170) return;
+
+                const dot = (dx * dirX + dy * dirY + dz * dirZ) / dist;
+                if (dot < 0.2) return;
+
+                enemy.hp -= 1;
+                spawnPoisonImpact(enemy.x, enemy.y, enemy.z, 1.1 + Math.random() * 0.8);
+
+                if (enemy.hp <= 0) {
+                    enemy.alive = false;
+                    enemy.element.remove();
+                    spawnPoisonImpact(enemy.x, enemy.y + 10, enemy.z, 1.8);
+                }
+            });
+        }
+
+        function updateMovement() {
+            const forward = (keys.w ? 1 : 0) - (keys.s ? 1 : 0);
+            const strafe = (keys.d ? 1 : 0) - (keys.a ? 1 : 0);
+            const hasInput = forward !== 0 || strafe !== 0;
+
+            if (hasInput) {
+                moveSpeed = Math.min(maxMoveSpeed, moveSpeed + acceleration);
+            } else {
+                moveSpeed = Math.max(0, moveSpeed - deceleration);
+            }
+
+            if (moveSpeed > 0) {
+                const yaw = rotY * Math.PI / 180;
+                const moveX = Math.sin(yaw) * forward + Math.cos(yaw) * strafe;
+                const moveZ = Math.cos(yaw) * forward - Math.sin(yaw) * strafe;
+                const length = Math.hypot(moveX, moveZ) || 1;
+
+                camX += (moveX / length) * moveSpeed;
+                camZ += (moveZ / length) * moveSpeed;
+            }
+
+            if (keys.space && isGrounded) {
+                velocityY = jumpForce;
+                isGrounded = false;
+            }
+
+            if (!isGrounded) {
+                velocityY -= gravity;
+                camY += velocityY;
+
+                if (camY <= floorHeight) {
+                    camY = floorHeight;
+                    velocityY = 0;
+                    isGrounded = true;
+                }
+            }
+        }
+
+        function updateBullets() {
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                const bullet = bullets[i];
+                bullet.x += bullet.vx;
+                bullet.y += bullet.vy;
+                bullet.z += bullet.vz;
+                bullet.life -= 1;
+
+                let collision = false;
+                for (const enemy of evilTungs) {
+                    if (!enemy.alive) continue;
+
+                    const dx = bullet.x - enemy.x;
+                    const dy = bullet.y - enemy.y;
+                    const dz = bullet.z - enemy.z;
+                    const dist = Math.hypot(dx, dy, dz);
+
+                    if (dist < 38) {
+                        enemy.hp -= bullet.damage;
+                        spawnPoisonImpact(enemy.x, enemy.y, enemy.z, 1.5);
+                        if (enemy.hp <= 0) {
+                            enemy.alive = false;
+                            enemy.element.remove();
+                            spawnPoisonImpact(enemy.x, enemy.y + 10, enemy.z, 1.9);
+                        }
+                        collision = true;
+                        break;
+                    }
+                }
+
+                if (collision || bullet.life <= 0 || Math.abs(bullet.x) > 620 || Math.abs(bullet.z) > 620 || bullet.y < -60 || bullet.y > 260) {
+                    if (!collision) {
+                        spawnPoisonImpact(bullet.x, bullet.y, bullet.z, 1.2);
+                    }
+                    bullet.element.remove();
+                    bullets.splice(i, 1);
+                    continue;
+                }
+
+                bullet.element.style.transform = `translate3d(${bullet.x}px, ${bullet.y}px, ${bullet.z}px) rotateY(${Math.atan2(bullet.vx, bullet.vz) * 180 / Math.PI}deg)`;
+            }
+        }
+
+        function updatePoisonImpacts() {
+            for (let i = poisonImpacts.length - 1; i >= 0; i--) {
+                const impact = poisonImpacts[i];
+                impact.life -= 1;
+                const progress = 1 - impact.life / 18;
+                impact.element.style.opacity = String(1 - progress);
+                impact.element.style.transform = `translate3d(${impact.x}px, ${impact.y}px, ${impact.z}px) scale(${impact.scale + progress * 1.7})`;
+
+                if (impact.life <= 0) {
+                    impact.element.remove();
+                    poisonImpacts.splice(i, 1);
+                }
+            }
+        }
+
+        function updateMeleeEffects() {
+            for (let i = meleeEffects.length - 1; i >= 0; i--) {
+                const melee = meleeEffects[i];
+                melee.life -= 1;
+                const fade = melee.life / 12;
+                melee.element.style.opacity = String(fade);
+                melee.element.style.transform = `translate3d(${melee.x}px, ${melee.y}px, ${melee.z}px) rotateY(${melee.yaw}deg) rotateX(${-melee.pitch}deg) scale(${1 + (1 - fade) * 0.8})`;
+
+                if (melee.life <= 0) {
+                    melee.element.remove();
+                    meleeEffects.splice(i, 1);
+                }
+            }
+        }
+
+        function updateScene() {
+            if (document.pointerLockElement === document.body) {
+                updateMovement();
+            }
+
+            rotationRig.style.transform = `rotateX(${-rotX}deg) rotateY(${-rotY}deg)`;
+            translationRig.style.transform = `translate3d(${-camX}px, ${-camY}px, ${-camZ}px)`;
+
+            updateBullets();
+            updatePoisonImpacts();
+            updateMeleeEffects();
+            evilTungs.forEach(updateEnemyVisual);
+
             requestAnimationFrame(updateScene);
         }
 
+        spawnEvilTungs();
         updateScene();
     </script>
 </body>
