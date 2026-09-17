@@ -200,11 +200,10 @@
                 let cos = Math.cos(angleRad);
 
                 if (keys.w) { velocityX=(speed*accel); camX += sin * velocityX; camZ += cos * velocityX; accel = accel*1.01}
-                else if(!keys.w){ velocityX=0;}
                 if (keys.s) { camX -= sin * speed; camZ -= cos * speed; }
                 if (keys.a) { camX += cos * speed; camZ -= sin * speed; }
                 if (keys.d) { camX -= cos * speed; camZ += sin * speed; }
-
+                if (!keys.w) {velocityX = 0;}
                 // --- 2. VERTICAL JUMP PHYSICS & GRAVITY ---
                 if (keys.space && isGrounded) {
                     velocityY = jumpForce;
