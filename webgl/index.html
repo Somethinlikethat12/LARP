@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Camera Environment (Directional Movement)</title>
+    <title>3D Camera Environment (Perfect Movement)</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         
@@ -12,23 +12,17 @@
             height: 100vh;
             overflow: hidden;
             font-family: sans-serif;
-            perspective: 600px; /* Lens depth of the camera view */
+            perspective: 600px;
             perspective-origin: 50% 50%;
         }
 
         #instructions {
             position: absolute;
-            width: 100%;
-            height: 100%;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            color: white;
-            background: rgba(0, 0, 0, 0.8);
-            cursor: pointer;
-            z-index: 10;
-            text-align: center;
+            width: 100%; height: 100%;
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+            color: white; background: rgba(0, 0, 0, 0.8);
+            cursor: pointer; z-index: 10; text-align: center;
         }
 
         #crosshair {
@@ -36,50 +30,43 @@
             top: 50%; left: 50%;
             width: 10px; height: 10px;
             transform: translate(-50%, -50%);
-            pointer-events: none;
-            z-index: 5;
+            pointer-events: none; z-index: 5;
         }
         #crosshair::before, #crosshair::after { content: ''; position: absolute; background: white; }
         #crosshair::before { top: 4px; left: 0; width: 10px; height: 2px; }
         #crosshair::after { top: 0; left: 4px; width: 2px; height: 10px; }
 
-        /* Outer camera frame to handle movement position offsets */
-        .camera-rig {
-            width: 100%;
-            height: 100%;
+        /* Outer frame handles mouse rotation */
+        .camera-rotation-rig {
+            width: 100%; height: 100%;
             position: absolute;
             transform-style: preserve-3d;
-            transform: translate3d(0, 0, 0);
         }
 
-        /* Inner world container to handle mouse rotation offsets separately */
-        .world-container {
-            width: 100%;
-            height: 100%;
+        /* Inner frame handles physical world translation offsets */
+        .world-translation-rig {
+            width: 100%; height: 100%;
             position: absolute;
             transform-style: preserve-3d;
-            transform: rotateX(0deg) rotateY(0deg);
         }
 
         /* 3D Floor Grid */
         .floor {
             position: absolute;
-            width: 4000px;
-            height: 4000px;
+            width: 4000px; height: 4000px;
             top: 50%; left: 50%;
             margin-left: -2000px; margin-top: -2000px;
             background-image: 
                 linear-gradient(rgba(68, 68, 255, 0.2) 2px, transparent 2px),
                 linear-gradient(90deg, rgba(68, 68, 255, 0.2) 2px, transparent 2px);
             background-size: 50px 50px;
-            transform: rotateX(90deg) translateZ(75px); /* Flips plane flat on floor */
+            transform: rotateX(90deg) translateZ(100px); /* Flips grid plane flat */
         }
 
-        /* The 3D Cube Structures */
+        /* 3D Cube Structure */
         .cube {
             position: absolute;
-            width: 150px;
-            height: 150px;
+            width: 150px; height: 150px;
             top: 50%; left: 50%;
             margin-left: -75px; margin-top: -75px;
             transform-style: preserve-3d;
@@ -88,8 +75,7 @@
 
         .face {
             position: absolute;
-            width: 150px;
-            height: 150px;
+            width: 150px; height: 150px;
             border: 2px solid #fff;
             opacity: 0.9;
         }
@@ -111,9 +97,9 @@
     
     <div id="crosshair"></div>
 
-    <!-- Separating position variables from rotation variables enables relative vector movements -->
-    <div class="camera-rig" id="rig">
-        <div class="world-container" id="world">
+    <!-- Rotations and position translations must happen in separate container matrices -->
+    <div class="camera-rotation-rig" id="rotationRig">
+        <div class="world-translation-rig" id="translationRig">
             <div class="floor"></div>
             <div class="cube">
                 <div class="face front"></div>
@@ -127,15 +113,15 @@
     </div>
 
     <script>
-        const rig = document.getElementById('rig');
-        const world = document.getElementById('world');
+        const rotationRig = document.getElementById('rotationRig');
+        const translationRig = document.getElementById('translationRig');
         const instructions = document.getElementById('instructions');
 
-        // State Trackers
+        // State trackers
         let keys = { w: false, a: false, s: false, d: false };
-        let camX = 0, camY = 0, camZ = -400; // Camera spatial coordinates
-        let rotX = 0, rotY = 0;               // Camera look variables
-        const speed = 5;
+        let camX = 0, camY = 100, camZ = -400; // Physical position vector coordinates
+        let rotX = 0, rotY = 0;                 // Viewing angle adjustments
+        const speed = 6;
 
         instructions.addEventListener('click', () => {
             document.body.requestPointerLock();
@@ -148,9 +134,9 @@
         document.addEventListener('mousemove', (e) => {
             if (document.pointerLockElement !== document.body) return;
             
-            rotY -= e.movementX * 0.15; // Pan left/right
-            rotX += e.movementY * 0.15; // Tilt up/down
-            rotX = Math.max(-70, Math.min(70, rotX)); // Bound view pitch tracking
+            rotY -= e.movementX * 0.15; // Left-Right rotation
+            rotX += e.movementY * 0.15; // Up-Down rotation
+            rotX = Math.max(-75, Math.min(75, rotX)); // Keep looking pitch within safe vertical boundaries
         });
 
         document.addEventListener('keydown', (e) => {
@@ -163,40 +149,36 @@
 
         function updateScene() {
             if (document.pointerLockElement === document.body) {
-                // Convert your yaw/heading degrees into radians for vector tracking
+                // Convert current viewing angle into horizontal trigonometry radians
                 let angleRad = rotY * Math.PI / 180;
 
-                // Track forward/backward facing vectors using circular trigonometry
-                let forwardX = Math.sin(angleRad);
-                let forwardZ = Math.cos(angleRad);
-
-                // Track sideways/strafe orientation vectors (perpendicular offset vectors)
-                let rightX = Math.cos(angleRad);
-                let rightZ = -Math.sin(angleRad);
+                // Calculate direction vectors relative to current view angle
+                let sin = Math.sin(angleRad);
+                let cos = Math.cos(angleRad);
 
                 if (keys.w) {
-                    camX += forwardX * speed;
-                    camZ += forwardZ * speed;
+                    camX += sin * speed;
+                    camZ += cos * speed;
                 }
                 if (keys.s) {
-                    camX -= forwardX * speed;
-                    camZ -= forwardZ * speed;
+                    camX -= sin * speed;
+                    camZ -= cos * speed;
                 }
                 if (keys.a) {
-                    camX -= rightX * speed;
-                    camZ -= rightZ * speed;
+                    camX += cos * speed;
+                    camZ -= sin * speed;
                 }
                 if (keys.d) {
-                    camX += rightX * speed;
-                    camZ += rightZ * speed;
+                    camX -= cos * speed;
+                    camZ += sin * speed;
                 }
             }
 
-            // Apply rotation matrices over the world layer first
-            world.style.transform = `rotateX(${rotX}deg) rotateY(${rotY}deg)`;
+            // 1. Rotate the camera viewing frame first to track the mouse look direction
+            rotationRig.style.transform = `rotateX(${rotX}deg) rotateY(${rotY}deg)`;
             
-            // Translate space coordinates safely on the parent position rig layer
-            rig.style.transform = `translate3d(${-camX}px, ${-camY}px, ${camZ}px)`;
+            // 2. Shift the inner world contents in reverse to mimic actual position stepping
+            translationRig.style.transform = `translate3d(${-camX}px, ${camY}px, ${camZ}px)`;
             
             requestAnimationFrame(updateScene);
         }
