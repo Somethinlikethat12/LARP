@@ -12,7 +12,6 @@
             font-family: sans-serif;
         }
 
-        /* Overlay prompting the user to activate look mode */
         #instructions {
             position: absolute;
             width: 100%;
@@ -31,7 +30,6 @@
         h1 { margin-bottom: 10px; font-size: 2rem; }
         p { color: #aaa; }
 
-        /* Reticle centered on your viewport */
         #crosshair {
             position: absolute;
             top: 50%;
@@ -60,7 +58,7 @@
     
     <div id="crosshair"></div>
 
-    <!-- We use unpkg via standard script tags to completely bypass CORS module blocks -->
+    <!-- This CDN link bypasses CORS blocks completely on githack -->
     <script src="https://unpkg.com"></script>
 
     <script>
@@ -69,7 +67,6 @@
         scene.background = new THREE.Color(0x1a1a2e);
 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        // Start the camera back and slightly up so you can see the cube instantly
         camera.position.set(0, 2, 8); 
 
         const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -84,34 +81,32 @@
         directionalLight.position.set(5, 10, 7);
         scene.add(directionalLight);
 
-        // Grid floor reference layout
         const grid = new THREE.GridHelper(100, 40, 0x4444ff, 0x333333);
         scene.add(grid);
 
-        // --- 3. THE CUBE (Stationary) ---
+        // --- 3. THE CUBE ---
         const materials = [
-            new THREE.MeshStandardMaterial({ color: 0x2ecc40 }), // Right (Green)
-            new THREE.MeshStandardMaterial({ color: 0xffdc00 }), // Left (Yellow)
-            new THREE.MeshStandardMaterial({ color: 0xb10dc9 }), // Top (Purple)
-            new THREE.MeshStandardMaterial({ color: 0xff851b }), // Bottom (Orange)
-            new THREE.MeshStandardMaterial({ color: 0xff4136 }), // Front (Red)
-            new THREE.MeshStandardMaterial({ color: 0x0074d9 })  // Back (Blue)
+            new THREE.MeshStandardMaterial({ color: 0x2ecc40 }), 
+            new THREE.MeshStandardMaterial({ color: 0xffdc00 }), 
+            new THREE.MeshStandardMaterial({ color: 0xb10dc9 }), 
+            new THREE.MeshStandardMaterial({ color: 0xff851b }), 
+            new THREE.MeshStandardMaterial({ color: 0xff4136 }), 
+            new THREE.MeshStandardMaterial({ color: 0x0074d9 })  
         ];
 
         const geometry = new THREE.BoxGeometry(3, 3, 3);
         const centralCube = new THREE.Mesh(geometry, materials);
-        centralCube.position.set(0, 1.5, 0); // Positioned flat on the grid floor
+        centralCube.position.set(0, 1.5, 0); 
         scene.add(centralCube);
 
-        // --- 4. CONTROLS STATE & LOGIC ---
+        // --- 4. CONTROLS ---
         const keys = { w: false, a: false, s: false, d: false };
         const moveSpeed = 0.12;
-        let yaw = 0;   // Left-right viewing angle
-        let pitch = 0; // Up-down viewing angle
+        let yaw = 0;   
+        let pitch = 0; 
 
         const instructions = document.getElementById('instructions');
 
-        // Capture mouse lock execution context
         instructions.addEventListener('click', () => {
             document.body.requestPointerLock();
         });
@@ -124,7 +119,6 @@
             }
         });
 
-        // Track Pointer Orientation Vectors
         document.addEventListener('mousemove', (e) => {
             if (document.pointerLockElement !== document.body) return;
 
@@ -132,13 +126,11 @@
             yaw -= e.movementX * sensitivity;
             pitch -= e.movementY * sensitivity;
 
-            // Prevent rolling completely upside down
             pitch = Math.max(-Math.PI / 2.05, Math.min(Math.PI / 2.05, pitch));
 
             camera.quaternion.setFromEuler(new THREE.Euler(pitch, yaw, 0, 'YXZ'));
         });
 
-        // Track Key Triggers
         document.addEventListener('keydown', (e) => {
             if (e.key.toLowerCase() in keys) keys[e.key.toLowerCase()] = true;
         });
@@ -147,16 +139,14 @@
             if (e.key.toLowerCase() in keys) keys[e.key.toLowerCase()] = false;
         });
 
-        // --- 5. SYSTEM RENDER ANIMATION TICK ---
+        // --- 5. ANIMATION LOOP ---
         function animate() {
             requestAnimationFrame(animate);
 
             if (document.pointerLockElement === document.body) {
-                // Compute look and strafe vector transforms matching current head orientation
                 const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
                 const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
 
-                // Lock translations to the plane of the floor
                 forward.y = 0;
                 right.y = 0;
                 forward.normalize();
@@ -171,7 +161,6 @@
             renderer.render(scene, camera);
         }
 
-        // Adjust aspect ratio automatically on window adjustment
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
