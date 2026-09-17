@@ -1,5 +1,106 @@
+body {
+    margin: 0;
+    padding: 0;
+    background-color: #0b0c10;
+    color: #c5c6c7;
+    font-family: 'Courier New', Courier, monospace;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    overflow: hidden;
+}
+
+#game-container {
+    position: relative;
+    width: 800px;
+    height: 600px;
+}
+
 canvas {
-    border: 4px solid #333; /* Darker border */
-    image-rendering: pixelated; 
-    box-shadow: 0 0 20px rgba(0, 0, 0, 0.8); /* Dark glow */
+    position: absolute;
+    top: 0;
+    left: 0;
+    border: 4px solid #1f2833;
+    image-rendering: pixelated;
+    z-index: 1;
+}
+
+#ui-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 2; /* Sits right over the canvas */
+    pointer-events: none; /* Allows keyboard control to pass through */
+}
+
+/* Clarity / Sanity Bar */
+#sanity-bar-container {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    background: rgba(0, 0, 0, 0.7);
+    padding: 10px;
+    border-radius: 4px;
+    border: 1px solid #45a29e;
+    pointer-events: auto;
+}
+
+#sanity-bar {
+    width: 150px;
+    height: 15px;
+    background: #333;
+    margin-top: 5px;
+    border: 1px solid #c5c6c7;
+}
+
+#sanity-fill {
+    width: 100%; /* Dynamic */
+    height: 100%;
+    background: #66fcf1;
+    transition: width 0.3s ease;
+}
+
+/* Classic JRPG Textbox */
+#textbox {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 90%;
+    height: 120px;
+    background: rgba(11, 12, 16, 0.95);
+    border: 3px double #66fcf1;
+    padding: 15px;
+    box-sizing: border-box;
+    pointer-events: auto;
+}
+
+#textbox-speaker {
+    margin: 0 0 5px 0;
+    color: #66fcf1;
+    font-weight: bold;
+}
+
+#textbox-text {
+    margin: 0;
+    font-size: 16px;
+    line-height: 1.4;
+}
+
+#textbox-btn {
+    position: absolute;
+    bottom: 10px;
+    right: 15px;
+    background: #1f2833;
+    color: #66fcf1;
+    border: 1px solid #66fcf1;
+    cursor: pointer;
+    padding: 3px 10px;
+}
+
+.hidden {
+    display: none !important;
 }

@@ -1,62 +1,131 @@
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
-// Grid settings
-const TILE_SIZE = 50; // Each map square is 50x50 pixels
+const TILE_SIZE = 50;
 const COLS = 16;
 const ROWS = 12;
 
-// Map Blueprint: 0 = Grass/Path, 1 = Wall, 2 = Sahur Fire (Safe zone/Danger)
-const map = [,
- ,
- ,
- ,
- ,
- ,
- ,
- ,
- ,
- ,
- ,
+// --- GAME STATE ---
+let gameState = {
+    clarity: 100, // Our PG version of Sanity
+    cluesFound: 0,
+    inDialogue: false
+};
+
+// 0 = Walkable, 1 = Dense Woods/Wall, 3 = Angel Tung NPC, 4 = Corrupted Object
+const map = [
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+    [1,0,0,0,1,0,0,0,0,0,0,0,0,0,0,1],
+    [1,0,1,0,1,0,1,1,1,1,1,0,1,1,0,1],
+    [1,0,1,0,0,0,0,0,0,0,1,0,1,4,0,1],
+    [1,0,1,1,1,1,1,0,1,0,1,0,1,1,0,1],
+    [1,0,0,0,0,3,1,0,1,0,0,0,0,0,0,1],
+    [1,1,1,1,0,1,1,0,1,1,1,1,1,1,0,1],
+    [1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1],
+    [1,0,1,1,1,1,1,1,1,1,1,1,0,1,0,1],
+    [1,0,1,4,0,0,0,0,0,0,0,1,0,0,0,1],
+    [1,0,0,0,0,1,0,1,0,1,0,0,0,1,0,1],
     [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
 ];
 
-// Player Setup (Starting as the new Sahur)
 const player = {
-    x: 1 * TILE_SIZE, // Start at tile column 1
-    y: 1 * TILE_SIZE, // Start at tile row 1
+    x: TILE_SIZE * 1,
+    y: TILE_SIZE * 1,
     size: TILE_SIZE - 10,
-    speed: 4,
-    color: "#e0a96d" // Pale gold/ash color for the chosen Sahur
+    speed: 4
 };
 
 const keys = {};
-window.addEventListener("keydown", e => keys[e.key] = true);
+window.addEventListener("keydown", e => { if(!gameState.inDialogue) keys[e.key] = true; });
 window.addEventListener("keyup", e => keys[e.key] = false);
 
-// Check if a specific pixel position collides with a Wall (1)
-function isColliding(x, y) {
-    // Check all 4 corners of the player's square bounding box
-    const corners = [
-        { x: x, y: y },
-        { x: x + player.size, y: y },
-        { x: x, y: y + player.size },
-        { x: x + player.size, y: y + player.size }
-    ];
-
-    for (let corner of corners) {
-        let tileX = Math.floor(corner.x / TILE_SIZE);
-        let tileY = Math.floor(corner.y / TILE_SIZE);
-        
-        // Out of bounds checking
-        if (tileX < 0 || tileX >= COLS || tileY < 0 || tileY >= ROWS) return true;
-        // Wall checking
-        if (map[tileY][tileX] === 1) return true;
-    }
+// --- COLLISION ENGINE ---
+function isSolid(x, y) {
+    const tileX = Math.floor(x / TILE_SIZE);
+    const tileY = Math.floor(y / TILE_SIZE);
+    
+    if (tileX < 0 || tileX >= COLS || tileY < 0 || tileY >= ROWS) return true;
+    
+    // Custom interaction checks (Stepping on dynamic elements)
+    let tileType = map[tileY][tileX];
+    if (tileType === 1) return true; // Direct solid block
     return false;
 }
 
+function checkCollision(nextX, nextY) {
+    return isSolid(nextX, nextY) || 
+           isSolid(nextX + player.size, nextY) || 
+           isSolid(nextX, nextY + player.size) || 
+           isSolid(nextX + player.size, nextY + player.size);
+}
+
+// --- JRPG INTERACTION SYSTEM (Action Key: 'e') ---
+window.addEventListener("keydown", e => {
+    if (e.key === "e" || e.key === "E") {
+        if (gameState.inDialogue) {
+            closeTextbox();
+            return;
+        }
+
+        // Check tiles right in front of the center of player
+        let centerX = Math.floor((player.x + player.size/2) / TILE_SIZE);
+        let centerY = Math.floor((player.y + player.size/2) / TILE_SIZE);
+
+        // Check adjacent tiles for interactables
+        checkInteract(centerX, centerY);
+        checkInteract(centerX + 1, centerY);
+        checkInteract(centerX - 1, centerY);
+        checkInteract(centerX, centerY + 1);
+        checkInteract(centerX, centerY - 1);
+    }
+});
+
+function checkInteract(tx, ty) {
+    if(tx < 0 || tx >= COLS || ty < 0 || ty >= ROWS) return;
+    
+    let target = map[ty][tx];
+
+    if (target === 3) { // Angel Tung NPC
+        triggerDialogue("Angel Tung Elder", "Young Sahur... Devil Tung has distorted the memories of the world. Find the lost dream tokens to restore balance!");
+    } 
+    else if (target === 4) { // Corrupted Dream Object
+        triggerDialogue("Distorted Memory", "You look at the strange relic. A dark whispers cloud your mind... Your clarity drops, but you find a missing timeline fragment!");
+        map[ty][tx] = 0; // Remove item after collection
+        gameState.cluesFound++;
+        updateClarity(-25);
+    }
+}
+
+// --- UI LOGIC ---
+function triggerDialogue(speaker, text) {
+    gameState.inDialogue = true;
+    // Reset running keys
+    for(let k in keys) keys[k] = false;
+
+    document.getElementById("textbox-speaker").innerText = speaker;
+    document.getElementById("textbox-text").innerText = text;
+    document.getElementById("textbox").classList.remove("hidden");
+}
+
+function closeTextbox() {
+    gameState.inDialogue = false;
+    document.getElementById("textbox").classList.add("hidden");
+    
+    if (gameState.clarity <= 0) {
+        triggerDialogue("GAME OVER", "Your Clarity completely vanished into the dream world. You became a wandering Tung... (Refresh to retry)");
+        gameState.inDialogue = true; // Freeze game
+    }
+}
+
+function updateClarity(amount) {
+    gameState.clarity = Math.max(0, Math.min(100, gameState.clarity + amount));
+    document.getElementById("sanity-fill").style.width = gameState.clarity + "%";
+}
+
+// --- ENGINE UPDATE & LOOP ---
 function update() {
+    if (gameState.inDialogue) return;
+
     let nextX = player.x;
     let nextY = player.y;
 
@@ -65,54 +134,34 @@ function update() {
     if (keys["ArrowLeft"] || keys["a"]) nextX -= player.speed;
     if (keys["ArrowRight"] || keys["d"]) nextX += player.speed;
 
-    // Only move if the next position doesn't collide with a wall
-    if (!isColliding(nextX, player.y)) player.x = nextX;
-    if (!isColliding(player.x, nextY)) player.y = nextY;
-
-    // Interact with special grid events (like tile 2)
-    checkTileEvents();
-}
-
-function checkTileEvents() {
-    let currentTileX = Math.floor((player.x + player.size/2) / TILE_SIZE);
-    let currentTileY = Math.floor((player.y + player.size/2) / TILE_SIZE);
-
-    if (map[currentTileY][currentTileX] === 2) {
-        // Example event: A resting place or text prompt
-        ctx.fillStyle = "#ffffff";
-        ctx.font = "16px monospace";
-        ctx.fillText("SAHUR BONFIRE RESTORED", 20, 40);
-    }
+    if (!checkCollision(nextX, player.y)) player.x = nextX;
+    if (!checkCollision(player.x, nextY)) player.y = nextY;
 }
 
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Draw the Grid Map
     for (let r = 0; r < ROWS; r++) {
         for (let c = 0; c < COLS; c++) {
-            if (map[r][c] === 1) {
-                ctx.fillStyle = "#1a1a24"; // Dark Souls-style solid brick/rubble
-            } else if (map[r][c] === 2) {
-                ctx.fillStyle = "#ff6a00"; // Blazing orange Sahur spark tile
-            } else {
-                ctx.fillStyle = "#2c302e"; // Desolate, ash-covered ground path
-            }
-            ctx.fillRect(c * TILE_SIZE, r * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+            if (map[r][c] === 1) ctx.fillStyle = "#111625"; // Ominous trees/walls
+            else if (map[r][c] === 3) ctx.fillStyle = "#45a29e"; // Teal for Angel Clan
+            else if (map[r][c] === 4) ctx.fillStyle = "#ff0055"; // Bright glitch neon for clues
+            else ctx.fillStyle = "#1c1d24"; // Regular walking floor
             
-            // Subtle tile grid outlines
-            ctx.strokeStyle = "#222";
+            ctx.fillRect(c * TILE_SIZE, r * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+            ctx.strokeStyle = "#10131a";
             ctx.strokeRect(c * TILE_SIZE, r * TILE_SIZE, TILE_SIZE, TILE_SIZE);
         }
     }
 
-    // Draw the Player (The new Sahur)
-    ctx.fillStyle = player.color;
+    // Draw the New Sahur (Gold block avatar)
+    ctx.fillStyle = "#66fcf1";
     ctx.fillRect(player.x, player.y, player.size, player.size);
     
-    // Draw a subtle "glow" on the player
-    ctx.strokeStyle = "#fff";
-    ctx.strokeRect(player.x, player.y, player.size, player.size);
+    // Basic text prompt indicator if standing near something
+    ctx.fillStyle = "rgba(255,255,255,0.4)";
+    ctx.font = "12px sans-serif";
+    ctx.fillText("WASD to Move | Press E to Interact", 550, 30);
 }
 
 function gameLoop() {
