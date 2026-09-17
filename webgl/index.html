@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Camera Environment (Perfect Movement)</title>
+    <title>3D Platformer with Gravity</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         
         body {
-            background-color: #1a1a2e;
+            background-color: #0b0b16;
             height: 100vh;
             overflow: hidden;
             font-family: sans-serif;
@@ -21,9 +21,12 @@
             width: 100%; height: 100%;
             display: flex; flex-direction: column;
             justify-content: center; align-items: center;
-            color: white; background: rgba(0, 0, 0, 0.8);
+            color: white; background: rgba(0, 0, 0, 0.85);
             cursor: pointer; z-index: 10; text-align: center;
         }
+
+        h1 { margin-bottom: 10px; font-size: 2rem; }
+        p { color: #aaa; line-height: 1.6; }
 
         #crosshair {
             position: absolute;
@@ -36,41 +39,50 @@
         #crosshair::before { top: 4px; left: 0; width: 10px; height: 2px; }
         #crosshair::after { top: 0; left: 4px; width: 2px; height: 10px; }
 
-        /* Outer frame handles mouse rotation */
+        /* Outer frame handles mouse rotation look variables */
         .camera-rotation-rig {
             width: 100%; height: 100%;
             position: absolute;
             transform-style: preserve-3d;
         }
 
-        /* Inner frame handles physical world translation offsets */
+        /* Inner frame handles physical camera positional translations */
         .world-translation-rig {
             width: 100%; height: 100%;
             position: absolute;
             transform-style: preserve-3d;
         }
 
-        /* 3D Floor Grid */
-        .floor {
+        /* The Main 3D Floating Platform Stage */
+        .platform {
             position: absolute;
-            width: 4000px; height: 4000px;
+            width: 1200px; height: 1200px;
             top: 50%; left: 50%;
-            margin-left: -2000px; margin-top: -2000px;
-            background-image: 
-                linear-gradient(rgba(68, 68, 255, 0.2) 2px, transparent 2px),
-                linear-gradient(90deg, rgba(68, 68, 255, 0.2) 2px, transparent 2px);
-            background-size: 50px 50px;
-            transform: rotateX(90deg) translateZ(100px); /* Flips grid plane flat */
+            margin-left: -600px; margin-top: -600px;
+            transform-style: preserve-3d;
+            transform: translate3d(0, 0, 0);
         }
 
-        /* 3D Cube Structure */
+        .p-face {
+            position: absolute;
+            border: 4px solid #4444ff;
+        }
+        /* Top surface of the platform you walk on */
+        .p-top    { width: 1200px; height: 1200px; background: #1a1a3a; transform: rotateX(90deg) translateZ(0px); }
+        /* Thick side borders to give it a block structure */
+        .p-front  { width: 1200px; height: 40px; background: #101026; transform: rotateX(0deg) translateZ(600px) translateY(0px); }
+        .p-back   { width: 1200px; height: 40px; background: #101026; transform: rotateX(180deg) translateZ(600px) translateY(-40px); }
+        .p-right  { width: 1200px; height: 40px; background: #151530; transform: rotateY(90deg) translateZ(600px) translateY(0px); }
+        .p-left   { width: 1200px; height: 40px; background: #151530; transform: rotateY(-90deg) translateZ(600px) translateY(0px); }
+
+        /* The Center Obstacle Cube */
         .cube {
             position: absolute;
             width: 150px; height: 150px;
             top: 50%; left: 50%;
             margin-left: -75px; margin-top: -75px;
             transform-style: preserve-3d;
-            transform: translate3d(0, 0, 0);
+            transform: translate3d(0, -75px, 0); /* Raised so it sits flat on the platform */
         }
 
         .face {
@@ -91,16 +103,25 @@
 <body>
 
     <div id="instructions">
-        <h1>Click to Look & Walk Around</h1>
-        <p>Move: WASD | Look: Mouse | Exit: ESC</p>
+        <h1>Click to Explore the Platform</h1>
+        <p>Move: WASD | Look: Mouse<br>Jump: SPACEBAR | Exit: ESC</p>
     </div>
     
     <div id="crosshair"></div>
 
-    <!-- Rotations and position translations must happen in separate container matrices -->
     <div class="camera-rotation-rig" id="rotationRig">
         <div class="world-translation-rig" id="translationRig">
-            <div class="floor"></div>
+            
+            <!-- Floating Platform Stage Container -->
+            <div class="platform">
+                <div class="p-face p-top"></div>
+                <div class="p-face p-front"></div>
+                <div class="p-face p-back"></div>
+                <div class="p-face p-right"></div>
+                <div class="p-face p-left"></div>
+            </div>
+
+            <!-- Central Target Cube -->
             <div class="cube">
                 <div class="face front"></div>
                 <div class="face back"></div>
@@ -109,6 +130,7 @@
                 <div class="face top"></div>
                 <div class="face bottom"></div>
             </div>
+
         </div>
     </div>
 
@@ -117,11 +139,25 @@
         const translationRig = document.getElementById('translationRig');
         const instructions = document.getElementById('instructions');
 
-        // State trackers
-        let keys = { w: false, a: false, s: false, d: false };
-        let camX = 0, camY = 100, camZ = -400; // Physical position vector coordinates
-        let rotX = 0, rotY = 0;                 // Viewing angle adjustments
-        const speed = 6;
+        // Input Trackers
+        let keys = { w: false, a: false, s: false, d: false, space: false };
+        
+        // Camera Spatial Vectors
+        let camX = 0;
+        let camY = 120; // Standing eye-height relative to the platform plane (0)
+        let camZ = -400;
+        
+        let rotX = 0;
+        let rotY = 0;
+
+        // Physics Constants
+        let velocityY = 0;
+        const gravity = 0.4;
+        const jumpForce = 9;
+        const floorHeight = 120; // Default standing position above y=0 platform plane
+        let isGrounded = true;
+
+        const speed = 5;
 
         instructions.addEventListener('click', () => {
             document.body.requestPointerLock();
@@ -134,50 +170,62 @@
         document.addEventListener('mousemove', (e) => {
             if (document.pointerLockElement !== document.body) return;
             
-            rotY -= e.movementX * 0.15; // Left-Right rotation
-            rotX += e.movementY * 0.15; // Up-Down rotation
-            rotX = Math.max(-75, Math.min(75, rotX)); // Keep looking pitch within safe vertical boundaries
+            rotY -= e.movementX * 0.15;
+            rotX += e.movementY * 0.15;
+            rotX = Math.max(-75, Math.min(75, rotX));
         });
 
         document.addEventListener('keydown', (e) => {
-            if (e.key.toLowerCase() in keys) keys[e.key.toLowerCase()] = true;
+            const key = e.key.toLowerCase();
+            if (key in keys) keys[key] = true;
+            if (e.code === 'Space') {
+                keys.space = true;
+                e.preventDefault(); // Stop screen from scrolling down
+            }
         });
 
         document.addEventListener('keyup', (e) => {
-            if (e.key.toLowerCase() in keys) keys[e.key.toLowerCase()] = false;
+            const key = e.key.toLowerCase();
+            if (key in keys) keys[key] = false;
+            if (e.code === 'Space') keys.space = false;
         });
 
         function updateScene() {
             if (document.pointerLockElement === document.body) {
-                // Convert current viewing angle into horizontal trigonometry radians
+                // --- 1. HORIZONTAL CAMERA TRANSLATION ---
                 let angleRad = rotY * Math.PI / 180;
-
-                // Calculate direction vectors relative to current view angle
                 let sin = Math.sin(angleRad);
                 let cos = Math.cos(angleRad);
 
-                if (keys.w) {
-                    camX += sin * speed;
-                    camZ += cos * speed;
+                if (keys.w) { camX += sin * speed; camZ += cos * speed; }
+                if (keys.s) { camX -= sin * speed; camZ -= cos * speed; }
+                if (keys.a) { camX += cos * speed; camZ -= sin * speed; }
+                if (keys.d) { camX -= cos * speed; camZ += sin * speed; }
+
+                // --- 2. VERTICAL JUMP PHYSICS & GRAVITY ---
+                if (keys.space && isGrounded) {
+                    velocityY = jumpForce;
+                    isGrounded = false;
                 }
-                if (keys.s) {
-                    camX -= sin * speed;
-                    camZ -= cos * speed;
-                }
-                if (keys.d) {
-                    camX += cos * speed;
-                    camZ -= sin * speed;
-                }
-                if (keys.a) {
-                    camX -= cos * speed;
-                    camZ += sin * speed;
+
+                // If in mid-air, apply gravity pull
+                if (!isGrounded) {
+                    velocityY -= gravity;
+                    camY += velocityY; // Positive velocity pushes camera higher up
+
+                    // Land back down check
+                    if (camY <= floorHeight) {
+                        camY = floorHeight;
+                        velocityY = 0;
+                        isGrounded = true;
+                    }
                 }
             }
 
-            // 1. Rotate the camera viewing frame first to track the mouse look direction
+            // --- 3. RENDER ENVIRONMENT TRANSFORMS ---
             rotationRig.style.transform = `rotateX(${rotX}deg) rotateY(${rotY}deg)`;
             
-            // 2. Shift the inner world contents in reverse to mimic actual position stepping
+            // CSS matrices use an inverted coordinate axis system for translations
             translationRig.style.transform = `translate3d(${-camX}px, ${camY}px, ${camZ}px)`;
             
             requestAnimationFrame(updateScene);
