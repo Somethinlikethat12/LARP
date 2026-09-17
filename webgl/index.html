@@ -193,6 +193,7 @@
         });
 
         function updateScene() {
+            let prevel= velocityX;
             if (document.pointerLockElement === document.body) {
                 // --- 1. HORIZONTAL CAMERA TRANSLATION ---
                 let angleRad = rotY * Math.PI / 180;
@@ -203,7 +204,7 @@
                 if (keys.s) { camX -= sin * speed; camZ -= cos * speed; }
                 if (keys.a) { camX += cos * speed; camZ -= sin * speed; }
                 if (keys.d) { camX -= cos * speed; camZ += sin * speed; }
-                if (!keys.w) {velocityX = 0;}
+                
                 // --- 2. VERTICAL JUMP PHYSICS & GRAVITY ---
                 if (keys.space && isGrounded) {
                     velocityY = jumpForce;
@@ -229,7 +230,8 @@
             
             // CSS matrices use an inverted coordinate axis system for translations
             translationRig.style.transform = `translate3d(${-camX}px, ${camY}px, ${camZ}px)`;
-            
+            if(prevel==velocityX)
+            velocityX=0;
             requestAnimationFrame(updateScene);
         }
 
