@@ -30,7 +30,7 @@ let last = performance.now();
 let accumulator = 0;
 const step = 1000 / 60;
 
-window.addEventListener("keydown", (event) => {
+canvas.addEventListener("keydown", (event) => {
   if (duel.gameOver && event.key.toLowerCase() === "r") {
     resetGame();
     return;
@@ -47,6 +47,7 @@ window.addEventListener("keydown", (event) => {
     player.parryCooldown = 16;
   }
 });
+canvas.addEventListener("pointerdown", () => canvas.focus());
 
 function spawnEnemy() {
   const fromRight = Math.random() > 0.5;
@@ -204,15 +205,16 @@ function tryPlayerHit(enemy) {
 }
 
 function updateSparks() {
-  duel.sparks = duel.sparks
-    .map((spark) => ({
-      ...spark,
-      x: spark.x + spark.dx,
-      y: spark.y + spark.dy,
-      dy: spark.dy + 0.09,
-      life: spark.life - 1
-    }))
-    .filter((spark) => spark.life > 0);
+  for (let i = duel.sparks.length - 1; i >= 0; i -= 1) {
+    const spark = duel.sparks[i];
+    spark.x += spark.dx;
+    spark.y += spark.dy;
+    spark.dy += 0.09;
+    spark.life -= 1;
+    if (spark.life <= 0) {
+      duel.sparks.splice(i, 1);
+    }
+  }
 }
 
 function update() {
@@ -412,4 +414,5 @@ function loop(now) {
 }
 
 resetGame();
+canvas.focus();
 requestAnimationFrame(loop);
