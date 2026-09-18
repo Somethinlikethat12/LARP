@@ -176,17 +176,34 @@
     let playerModelTemplate = null;
     let batWeaponTemplate = null;
     let firstPersonWeapon = null;
+    let thrownBats = [];
     let yaw = 0;
     let pitch = 0;
+    const cameraHeight = 1.6;
+    const attackState = {
+      meleeCooldown: 0,
+      throwCooldown: 0,
+      meleeSwing: 0
+    };
 
     function clamp(value, min, max) {
       return Math.min(max, Math.max(min, value));
     }
 
+    function scaleModelToHeight(model, targetHeight) {
+      const box = new THREE.Box3().setFromObject(model);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      const currentHeight = size.y || 1;
+      const scale = targetHeight / currentHeight;
+      model.scale.setScalar(scale);
+      return scale;
+    }
+
     function buildPlayerFromTemplate() {
       const mesh = playerModelTemplate.clone(true);
-      mesh.scale.setScalar(0.3);
-      mesh.position.set(0, 0.15, 0);
+      scaleModelToHeight(mesh, cameraHeight);
+      mesh.position.set(0, 0.1, 0);
       mesh.rotation.y = Math.PI;
       mesh.traverse((child) => {
         if (child.isMesh) {
@@ -200,8 +217,8 @@
 
     function spawnEnemy(x, z) {
       const mesh = playerModelTemplate.clone(true);
-      mesh.scale.setScalar(0.22);
-      mesh.position.set(x, 0.12, z);
+      scaleModelToHeight(mesh, cameraHeight * 0.9);
+      mesh.position.set(x, 0.1, z);
       mesh.rotation.y = 0;
       mesh.traverse((child) => {
         if (child.isMesh) {
@@ -221,9 +238,9 @@
       if (!batWeaponTemplate || firstPersonWeapon) return;
 
       firstPersonWeapon = batWeaponTemplate.clone(true);
-      firstPersonWeapon.scale.setScalar(0.18);
-      firstPersonWeapon.position.set(0.7, -0.55, -1.1);
-      firstPersonWeapon.rotation.set(0.2, Math.PI / 2.6, 0);
+      scaleModelToHeight(firstPersonWeapon, 1.0);
+      firstPersonWeapon.position.set(0.7, -0.6, -1.0);
+      firstPersonWeapon.rotation.set(0.35, Math.PI / 2.6, -0.2);
       camera.add(firstPersonWeapon);
     }
 
@@ -277,10 +294,47 @@
       }
     }
 
+    function performMeleeAttack() {
+      if (attackState.meleeCooldown > 0) return;
+      attackState.meleeCooldown = 0.42;
+      attackState.meleeSwing = 0.18;
+
+      const origin = camera.position.clone();
+      const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion).normalize();
+      const ray = new THREE.Raycaster(origin, dir, 0, 2.7);
+      const hitTargets = ray.intersectObjects(enemies.map((enemy) => enemy.mesh), true);
+
+      if (hitTargets.length > 0) {
+        const hitEnemy = hitTargets[0].object;
+        const target = enemies.find((enemy) => enemy.mesh === hitEnemy || enemy.mesh.children.includes(hitEnemy) || hitEnemy.parent && enemy.mesh === hitEnemy.parent || hitEnemy.parent && enemy.mesh === hitEnemy.parent.parent);
+        if (target) {
+          target.mesh.scale.multiplyScalar(0.96);
+          target.mesh.position.y += 0.08;
+        }
+      }
+    }
+
+    function spawnThrownBat() {
+      if (attackState.throwCooldown > 0 || !batWeaponTemplate) return;
+      attackState.throwCooldown = 0.9;
+
+      const projectile = batWeaponTemplate.clone(true);
+      scaleModelToHeight(projectile, 1.0);
+      projectiles = projectiles || [];
+      const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion).normalize();
+      const start = camera.position.clone().add(dir.clone().multiplyScalar(0.9));
+      projectile.position.copy(start);
+      projectile.rotation.copy(camera.rotation);
+      projectile.rotation.x += 0.8;
+      projectile.rotation.z += 0.5;
+      scene.add(projectile);
+      thrownBats.push({ mesh: projectile, velocity: dir.multiplyScalar(18) });
+    }
+
     function handleMovement(dt) {
       if (!player) return;
 
-      const forward = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
+      const forward = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
       const right = new THREE.Vector3(forward.z, 0, -forward.x);
       const move = new THREE.Vector3();
 
@@ -303,14 +357,17 @@
     function updateCamera(dt) {
       if (!player) return;
 
-      camera.position.set(player.position.x, player.position.y + 1.6, player.position.z);
+      camera.position.set(player.position.x, player.position.y + cameraHeight, player.position.z);
       camera.rotation.order = 'YXZ';
       camera.rotation.x = pitch;
       camera.rotation.y = yaw;
 
       if (firstPersonWeapon) {
-        firstPersonWeapon.position.set(0.7, -0.55, -1.1);
-        firstPersonWeapon.rotation.set(0.2, Math.PI / 2.6, 0);
+        firstPersonWeapon.position.set(0.7, -0.55, -1.0);
+        firstPersonWeapon.rotation.set(0.35, Math.PI / 2.6, -0.2);
+        if (attackState.meleeSwing > 0) {
+          firstPersonWeapon.rotation.z = -0.2 + Math.sin((0.18 - attackState.meleeSwing) * 30) * 0.8;
+        }
       }
     }
 
@@ -333,6 +390,9 @@
       if (event.code === 'Escape') {
         document.exitPointerLock();
       }
+      if (event.code === 'Space') {
+        performMeleeAttack();
+      }
     });
 
     document.addEventListener('keyup', (event) => {
@@ -353,6 +413,14 @@
 
     renderer.domElement.addEventListener('click', () => {
       renderer.domElement.requestPointerLock();
+      if (document.pointerLockElement === renderer.domElement) {
+        performMeleeAttack();
+      }
+    });
+
+    document.addEventListener('contextmenu', (event) => {
+      event.preventDefault();
+      spawnThrownBat();
     });
 
     document.addEventListener('pointerlockchange', onPointerLockChange);
@@ -360,6 +428,30 @@
     function animate() {
       requestAnimationFrame(animate);
       const dt = clock.getDelta();
+
+      attackState.meleeCooldown = Math.max(0, attackState.meleeCooldown - dt);
+      attackState.throwCooldown = Math.max(0, attackState.throwCooldown - dt);
+      attackState.meleeSwing = Math.max(0, attackState.meleeSwing - dt);
+
+      for (let i = thrownBats.length - 1; i >= 0; i--) {
+        const projectile = thrownBats[i];
+        projectile.mesh.position.addScaledVector(projectile.velocity, dt);
+        projectile.mesh.rotation.z += 0.25;
+
+        for (const enemy of enemies) {
+          if (projectile.mesh.position.distanceTo(enemy.mesh.position) < 1.8) {
+            enemy.mesh.scale.multiplyScalar(0.92);
+            scene.remove(projectile.mesh);
+            thrownBats.splice(i, 1);
+            break;
+          }
+        }
+
+        if (projectile.mesh.position.length() > 80) {
+          scene.remove(projectile.mesh);
+          thrownBats.splice(i, 1);
+        }
+      }
 
       if (player) {
         handleMovement(dt);
