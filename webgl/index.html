@@ -180,7 +180,7 @@
     let yaw = 0;
     let pitch = 0;
     const cameraHeight = 1.6;
-    const groundHeight = 1.0;
+    const groundHeight = 1.75;
     const attackState = {
       meleeCooldown: 0,
       throwCooldown: 0,
@@ -201,17 +201,28 @@
       return scale;
     }
 
-    function buildPlayerFromTemplate() {
-      const mesh = playerModelTemplate.clone(true);
-      scaleModelToHeight(mesh, cameraHeight);
-      mesh.position.set(0, groundHeight, 0);
-      mesh.rotation.y = Math.PI;
-      mesh.traverse((child) => {
+    function removeShadowPlanes(model) {
+      model.traverse((child) => {
+        if (!child.isMesh) return;
+
+        const name = (child.name || '').toLowerCase();
+        if (name.includes('plane') || name.includes('shadow') || name.includes('foot') || child.geometry?.type === 'PlaneGeometry') {
+          child.visible = false;
+        }
+
         if (child.isMesh) {
           child.castShadow = true;
           child.receiveShadow = true;
         }
       });
+    }
+
+    function buildPlayerFromTemplate() {
+      const mesh = playerModelTemplate.clone(true);
+      scaleModelToHeight(mesh, cameraHeight);
+      mesh.position.set(0, groundHeight, 0);
+      mesh.rotation.y = Math.PI;
+      removeShadowPlanes(mesh);
       scene.add(mesh);
       return mesh;
     }
@@ -219,14 +230,9 @@
     function spawnEnemy(x, z) {
       const mesh = playerModelTemplate.clone(true);
       scaleModelToHeight(mesh, cameraHeight * 0.9);
-      mesh.position.set(x, groundHeight + 0.2, z);
+      mesh.position.set(x, groundHeight + 0.55, z);
       mesh.rotation.y = 0;
-      mesh.traverse((child) => {
-        if (child.isMesh) {
-          child.castShadow = true;
-          child.receiveShadow = true;
-        }
-      });
+      removeShadowPlanes(mesh);
       scene.add(mesh);
       enemies.push({
         mesh,
@@ -239,9 +245,10 @@
       if (!batWeaponTemplate || firstPersonWeapon) return;
 
       firstPersonWeapon = batWeaponTemplate.clone(true);
-      scaleModelToHeight(firstPersonWeapon, 1.0);
-      firstPersonWeapon.position.set(0.72, -0.62, -1.15);
-      firstPersonWeapon.rotation.set(0.45, Math.PI / 2.6, -0.2);
+      scaleModelToHeight(firstPersonWeapon, 1.15);
+      removeShadowPlanes(firstPersonWeapon);
+      firstPersonWeapon.position.set(0.8, -0.78, -1.35);
+      firstPersonWeapon.rotation.set(0.8, Math.PI / 2.2, 0.2);
       camera.add(firstPersonWeapon);
     }
 
@@ -250,12 +257,7 @@
         playerModelUrl,
         (gltf) => {
           const root = gltf.scene;
-          root.traverse((child) => {
-            if (child.isMesh) {
-              child.castShadow = true;
-              child.receiveShadow = true;
-            }
-          });
+          removeShadowPlanes(root);
 
           playerModelTemplate = root;
           player = buildPlayerFromTemplate();
@@ -278,6 +280,7 @@
         batModelUrl,
         (gltf) => {
           batWeaponTemplate = gltf.scene;
+          removeShadowPlanes(batWeaponTemplate);
           attachBatWeapon();
         },
         undefined,
@@ -306,10 +309,10 @@
         const toEnemy = enemy.mesh.position.clone().sub(camera.position);
         const distance = toEnemy.length();
         if (distance < 3.2) {
-          const facing = toEnemy.normalize().dot(attackDirection);
+          const facing = toEnemy.clone().normalize().dot(attackDirection);
           if (facing > 0.2) {
             enemy.mesh.scale.multiplyScalar(0.96);
-            enemy.mesh.position.y += 0.08;
+            enemy.mesh.position.y += 0.1;
           }
         }
       }
@@ -320,6 +323,7 @@
       attackState.throwCooldown = 0.9;
 
       const projectile = batWeaponTemplate.clone(true);
+      removeShadowPlanes(projectile);
       scaleModelToHeight(projectile, 1.0);
       const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion).normalize();
       const start = camera.position.clone().add(dir.clone().multiplyScalar(0.9));
@@ -334,8 +338,8 @@
     function handleMovement(dt) {
       if (!player) return;
 
-      const forward = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
-      const right = new THREE.Vector3(forward.z, 0, -forward.x);
+      const forward = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
+      const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
       const move = new THREE.Vector3();
 
       if (keys.KeyW) move.add(forward);
@@ -363,10 +367,10 @@
       camera.rotation.y = yaw;
 
       if (firstPersonWeapon) {
-        firstPersonWeapon.position.set(0.72, -0.62, -1.15);
-        firstPersonWeapon.rotation.set(0.45, Math.PI / 2.6, -0.2);
+        firstPersonWeapon.position.set(0.8, -0.78, -1.35);
+        firstPersonWeapon.rotation.set(0.8, Math.PI / 2.2, 0.2);
         if (attackState.meleeSwing > 0) {
-          firstPersonWeapon.rotation.z = -0.2 + Math.sin((0.18 - attackState.meleeSwing) * 30) * 0.8;
+          firstPersonWeapon.rotation.z = 0.2 + Math.sin((0.18 - attackState.meleeSwing) * 30) * 0.9;
         }
       }
     }
@@ -375,12 +379,15 @@
       if (!player) return;
 
       for (const enemy of enemies) {
-        const dir = player.position.clone().sub(enemy.mesh.position);
-        dir.y = 0;
-        if (dir.lengthSq() > 0.001) {
-          dir.normalize();
-          enemy.mesh.position.addScaledVector(dir, enemy.speed * dt);
-          enemy.mesh.lookAt(player.position.clone().add(new THREE.Vector3(0, 1.2, 0)));
+        const toPlayer = player.position.clone().sub(enemy.mesh.position);
+        const horizontal = toPlayer.clone();
+        horizontal.y = 0;
+
+        if (horizontal.lengthSq() > 0.001) {
+          const yawToPlayer = Math.atan2(horizontal.x, horizontal.z);
+          enemy.mesh.rotation.y = yawToPlayer;
+          horizontal.normalize();
+          enemy.mesh.position.addScaledVector(horizontal, enemy.speed * dt);
         }
       }
     }
