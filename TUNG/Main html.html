@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tung Tung Arena</title>
+    <style>
+        :root {
+            --bg: #090d17;
+            --panel: rgba(11, 17, 29, 0.8);
+            --panel-border: rgba(114, 238, 255, 0.5);
+            --cyan: #72eeff;
+            --blue: #4bb7ff;
+            --purple: #a574ff;
+            --pink: #ff7ad9;
+            --gold: #ffd166;
+            --danger: #ff5c7a;
+            --text: #edf8ff;
+        }
+
+        * { box-sizing: border-box; }
+
+        html, body {
+            margin: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: radial-gradient(circle at top, #14213d 0%, var(--bg) 58%);
+            color: var(--text);
+            font-family: "Segoe UI", Tahoma, sans-serif;
+        }
+
+        body {
+            display: grid;
+            place-items: center;
+        }
+
+        canvas {
+            display: block;
+            width: min(100vw, 1200px);
+            height: min(100vh, 680px);
+            background: linear-gradient(180deg, rgba(8, 26, 43, 0.9), rgba(8, 12, 20, 0.96));
+            border: 2px solid rgba(114, 238, 255, 0.4);
+            border-radius: 18px;
+            box-shadow: 0 18px 60px rgba(0, 0, 0, 0.5), 0 0 30px rgba(116, 190, 255, 0.2);
+        }
+
+        #hud {
+            position: fixed;
+            top: 18px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: min(92vw, 860px);
+            display: flex;
+            justify-content: space-between;
+            gap: 14px;
+            padding: 12px 18px;
+            border-radius: 14px;
+            background: rgba(8, 15, 24, 0.7);
+            border: 1px solid var(--panel-border);
+            backdrop-filter: blur(6px);
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        .stat {
+            min-width: 120px;
+            text-align: center;
+            font-size: 12px;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: rgba(237, 248, 255, 0.8);
+        }
+
+        .stat strong {
+            display: block;
+            margin-top: 4px;
+            font-size: 28px;
+            letter-spacing: normal;
+            color: var(--text);
+        }
+
+        .overlay {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(6, 12, 19, 0.5);
+            backdrop-filter: blur(3px);
+            z-index: 20;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.25s ease;
+        }
+
+        .overlay.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .panel {
+            width: min(80vw, 520px);
+            padding: 32px 28px 24px;
+            border-radius: 20px;
+            text-align: center;
+            background: rgba(8, 15, 24, 0.82);
+            border: 1px solid var(--panel-border);
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+        }
+
+        h1 {
+            margin: 0 0 12px;
+            font-size: clamp(2rem, 3vw, 3.2rem);
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--cyan);
+            text-shadow: 0 0 20px rgba(114, 238, 255, 0.7);
+        }
+
+        .subtitle {
+            margin: 0 0 24px;
+            color: rgba(237, 248, 255, 0.84);
+            font-size: 1rem;
+            line-height: 1.6;
+        }
+
+        button {
+            border: none;
+            border-radius: 999px;
+            padding: 14px 28px;
+            font-size: 1rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--bg);
+            background: linear-gradient(135deg, var(--cyan), var(--gold));
+            cursor: pointer;
+            box-shadow: 0 10px 24px rgba(114, 238, 255, 0.3);
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 14px 30px rgba(114, 238, 255, 0.36);
+        }
+    </style>
+</head>
+<body>
+    <div id="hud">
+        <div class="stat">Health<strong id="healthValue">100</strong></div>
+        <div class="stat">Wave<strong id="waveValue">1</strong></div>
+        <div class="stat">Score<strong id="scoreValue">0</strong></div>
+    </div>
+
+    <canvas id="game" width="960" height="540"></canvas>
+
+    <div id="overlay" class="overlay visible">
+        <div class="panel">
+            <h1 id="overlayTitle">Tung Tung Arena</h1>
+            <p id="overlaySubtitle" class="subtitle">Move with WASD, slash with Space, and survive the endless swarm.</p>
+            <button id="startButton">Start Game</button>
+        </div>
+    </div>
+
+    <script src="Game.js"></script>
+</body>
+</html>

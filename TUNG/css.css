@@ -1,0 +1,33 @@
+#hitbox{
+width: 100px;
+height: 100px;
+background-color: red;
+  position: absolute;
+  left: 500px;
+  top: 500px;
+}
+
+#hurtbox{
+width: 100px;
+height: 100px;
+background-color: blue;
+  position: absolute;
+  left: 0px;
+  top: 0px;
+
+}
+#turret {
+  width: 60px;
+  height: 60px;
+  background-color: green;
+  position: absolute;
+  left: 700px; /* Position it on the right side of the screen */
+  top: 300px;
+}
+
+.bullet {
+  width: 20px;
+  height: 20px;
+  background-color: orange;
+  position: absolute;
+}

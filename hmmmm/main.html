@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Single-File JRPG Starter</title>
+    
+    <!-- Replace the old jsdelivr line with this cdnjs line: -->
+<script src="https://cloudflare.com"></script>
+
+    <style>
+        body {
+            margin: 0;
+            background-color: #111;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            font-family: 'Courier New', Courier, monospace;
+        }
+        #game-container {
+            box-shadow: 0px 0px 20px rgba(0,0,0,0.8);
+            border: 4px solid #fff;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container"></div>
+
+    <script>
+        // --- 1. GAME CONFIGURATION ---
+        const config = {
+            type: Phaser.AUTO,
+            width: 400,
+            height: 400,
+            parent: 'game-container',
+            pixelArt: true, // Forces crisp, retro pixel-art scaling
+            physics: {
+                default: 'arcade',
+                arcade: { gravity: { y: 0 } }
+            },
+            scene: {
+                preload: preload,
+                create: create,
+                update: update
+            }
+        };
+
+        const game = new Phaser.Game(config);
+        let player;
+        let cursors;
+        const TILE_SIZE = 32;
+
+        // --- 2. PRELOAD ASSETS ---
+        function preload() {
+            // Placeholder visuals generated using data URIs (so you don't need external image files!)
+            this.textures.addBase64('player', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAMElEQVRYR2Nk+M9wGAEYGDAAxv8MVDbAOMBoYIwGxmlgjAbGaWCMBsZpYJwGxpA6DAAtvAHz7S06WgAAAABJRU5ErkJggg=='); // Red Square Hero
+            this.textures.addBase64('wall', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAM0lEQVRYR2NkYGD4z0AAMDIwMFA2wDjAaGCMBsZoYJwGxmlgjAbGaWCMBsZpYIwGxkg6DAAr8AHzZ090ngAAAABJRU5ErkJggg==');   // White Square Wall
+        }
+
+        // --- 3. CREATE GAME WORLD ---
+        function create() {
+            cursors = this.input.keyboard.createCursorKeys();
+            
+            // Create a static physics group for obstacles / walls
+            const walls = this.physics.add.staticGroup();
+
+            // Simple 2D Array Map (1 = Wall, 0 = Walkable)
+            const map = [,
+ ,
+ ,
+ ,
+ ,
+ ,
+                [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+            ];
+
+            // Render the grid map onto the canvas
+            for (let row = 0; row < map.length; row++) {
+                for (let col = 0; col < map[row].length; col++) {
+                    let x = col * TILE_SIZE + TILE_SIZE / 2;
+                    let y = row * TILE_SIZE + TILE_SIZE / 2;
+
+                    if (map[row][col] === 1) {
+                        walls.create(x, y, 'wall').setDisplaySize(TILE_SIZE, TILE_SIZE).refreshBody();
+                    }
+                }
+            }
+
+            // Spawn Player Hero
+            player = this.physics.add.sprite(100, 100, 'player');
+            player.setDisplaySize(TILE_SIZE, TILE_SIZE);
+            player.setCollideWorldBounds(true);
+
+            // Enable collisions between player and walls
+            this.physics.add.collider(player, walls);
+
+            // Simple text instructions on screen
+            this.add.text(16, 360, 'Use Arrow Keys to Move', { fontSize: '14px', fill: '#fff' });
+        }
+
+        // --- 4. GAME UPDATE LOOP (Runs ~60 times a second) ---
+        function update() {
+            // Reset velocity every frame
+            player.setVelocity(0);
+
+            // Horizontal movement
+            if (cursors.left.isDown) {
+                player.setVelocityX(-150);
+            } else if (cursors.right.isDown) {
+                player.setVelocityX(150);
+            }
+
+            // Vertical movement
+            if (cursors.up.isDown) {
+                player.setVelocityY(-150);
+            } else if (cursors.down.isDown) {
+                player.setVelocityY(150);
+            }
+        }
+    </script>
+</body>
+</html>
