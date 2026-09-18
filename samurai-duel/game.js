@@ -205,16 +205,19 @@ function tryPlayerHit(enemy) {
 }
 
 function updateSparks() {
-  for (let i = duel.sparks.length - 1; i >= 0; i -= 1) {
+  let writeIndex = 0;
+  for (let i = 0; i < duel.sparks.length; i += 1) {
     const spark = duel.sparks[i];
     spark.x += spark.dx;
     spark.y += spark.dy;
     spark.dy += 0.09;
     spark.life -= 1;
-    if (spark.life <= 0) {
-      duel.sparks.splice(i, 1);
+    if (spark.life > 0) {
+      duel.sparks[writeIndex] = spark;
+      writeIndex += 1;
     }
   }
+  duel.sparks.length = writeIndex;
 }
 
 function update() {

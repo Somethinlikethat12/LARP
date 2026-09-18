@@ -34,3 +34,8 @@ canvas {
   background: linear-gradient(#161722, #0f0f16 45%, #1b1a1a 46%, #090909);
   box-shadow: 0 20px 45px rgba(0, 0, 0, 0.55);
 }
+
+canvas:focus-visible {
+  outline: 4px solid #9ee9ff;
+  outline-offset: 2px;
+}
