@@ -109,7 +109,7 @@
   <div id="hud">
     <div id="overlay">
       <h1>Click to enter FPS</h1>
-      <p>Move: WASD · Look: Mouse · Jump: Space · Exit: Esc</p>
+      <p>Move: W/S/A/D · Look: Mouse · Swing: M · Throw: N · Exit: Esc</p>
     </div>
     <div id="crosshair"></div>
   </div>
@@ -342,8 +342,8 @@
       const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
       const move = new THREE.Vector3();
 
-      if (keys.KeyW) move.add(forward);
-      if (keys.KeyS) move.sub(forward);
+      if (keys.KeyW) move.sub(forward);
+      if (keys.KeyS) move.add(forward);
       if (keys.KeyA) move.sub(right);
       if (keys.KeyD) move.add(right);
 
@@ -397,8 +397,11 @@
       if (event.code === 'Escape') {
         document.exitPointerLock();
       }
-      if (event.code === 'Space') {
+      if (event.code === 'KeyM') {
         performMeleeAttack();
+      }
+      if (event.code === 'KeyN') {
+        spawnThrownBat();
       }
     });
 
@@ -420,14 +423,10 @@
 
     renderer.domElement.addEventListener('click', () => {
       renderer.domElement.requestPointerLock();
-      if (document.pointerLockElement === renderer.domElement) {
-        performMeleeAttack();
-      }
     });
 
     document.addEventListener('contextmenu', (event) => {
       event.preventDefault();
-      spawnThrownBat();
     });
 
     document.addEventListener('pointerlockchange', onPointerLockChange);
