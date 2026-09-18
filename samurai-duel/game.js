@@ -325,14 +325,16 @@ function drawHUD(enemy) {
   ctx.fillText(`ENEMY ${duel.wave}`, canvas.width - 188, 17);
 }
 
-function drawEffects() {
+function drawWorldEffects() {
   for (const spark of duel.sparks) {
     ctx.globalAlpha = Math.max(0, spark.life / 28);
     ctx.fillStyle = spark.color;
     ctx.fillRect(spark.x, spark.y, 3, 3);
   }
   ctx.globalAlpha = 1;
+}
 
+function drawOverlayEffects() {
   if (duel.flashAlpha > 0.01) {
     ctx.fillStyle = `rgba(255,245,220,${duel.flashAlpha})`;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -394,10 +396,11 @@ function draw() {
     ctx.stroke();
   }
 
-  drawHUD(enemy);
-  drawEffects();
-
+  drawWorldEffects();
   ctx.restore();
+
+  drawHUD(enemy);
+  drawOverlayEffects();
 }
 
 function loop(now) {
