@@ -166,15 +166,16 @@
     const overlay = document.getElementById('overlay');
     const keys = {};
     const clock = new THREE.Clock();
+    const playerModelUrl = './Tung%20tung%20tung%20Sahur.glb';
     const batModelUrl = './wooden_bat.glb';
-    const batProjectileModelUrl = './wooden_bat.glb';
-    const modelUrl = batModelUrl;
     const loader = new THREE.GLTFLoader();
     loader.setCrossOrigin('anonymous');
 
     let player = null;
     let enemies = [];
     let playerModelTemplate = null;
+    let batWeaponTemplate = null;
+    let firstPersonWeapon = null;
     let yaw = 0;
     let pitch = 0;
 
@@ -184,8 +185,8 @@
 
     function buildPlayerFromTemplate() {
       const mesh = playerModelTemplate.clone(true);
-      mesh.scale.setScalar(0.9);
-      mesh.position.set(0, 0.116, 0);
+      mesh.scale.setScalar(0.3);
+      mesh.position.set(0, 0.15, 0);
       mesh.rotation.y = Math.PI;
       mesh.traverse((child) => {
         if (child.isMesh) {
@@ -199,8 +200,8 @@
 
     function spawnEnemy(x, z) {
       const mesh = playerModelTemplate.clone(true);
-      mesh.scale.setScalar(0.7);
-      mesh.position.set(x, 0.1, z);
+      mesh.scale.setScalar(0.22);
+      mesh.position.set(x, 0.12, z);
       mesh.rotation.y = 0;
       mesh.traverse((child) => {
         if (child.isMesh) {
@@ -216,9 +217,19 @@
       });
     }
 
+    function attachBatWeapon() {
+      if (!batWeaponTemplate || firstPersonWeapon) return;
+
+      firstPersonWeapon = batWeaponTemplate.clone(true);
+      firstPersonWeapon.scale.setScalar(0.18);
+      firstPersonWeapon.position.set(0.7, -0.55, -1.1);
+      firstPersonWeapon.rotation.set(0.2, Math.PI / 2.6, 0);
+      camera.add(firstPersonWeapon);
+    }
+
     function loadModel() {
       loader.load(
-        modelUrl,
+        playerModelUrl,
         (gltf) => {
           const root = gltf.scene;
           root.traverse((child) => {
@@ -230,6 +241,7 @@
 
           playerModelTemplate = root;
           player = buildPlayerFromTemplate();
+          player.visible = false;
 
           const spawnPositions = [
             [-12, -8], [14, -4], [-18, 16], [18, 15], [-4, 24], [10, 24]
@@ -239,8 +251,20 @@
         },
         undefined,
         (error) => {
-          console.error('GLTF load failed:', error);
+          console.error('Character GLTF load failed:', error);
           overlay.innerHTML = '<h1>Model failed to load</h1><p>Check the model path and serve the folder over http instead of opening the file directly.</p>';
+        }
+      );
+
+      loader.load(
+        batModelUrl,
+        (gltf) => {
+          batWeaponTemplate = gltf.scene;
+          attachBatWeapon();
+        },
+        undefined,
+        (error) => {
+          console.error('Bat GLTF load failed:', error);
         }
       );
     }
@@ -279,15 +303,15 @@
     function updateCamera(dt) {
       if (!player) return;
 
-      const lookTarget = player.position.clone().add(new THREE.Vector3(0, 1.6, 0));
-      const behind = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
-      const desiredCamPos = lookTarget.clone().add(behind.multiplyScalar(7)).add(new THREE.Vector3(0, 2.2, 0));
-
-      camera.position.lerp(desiredCamPos, 1 - Math.pow(0.01, dt));
+      camera.position.set(player.position.x, player.position.y + 1.6, player.position.z);
       camera.rotation.order = 'YXZ';
-      camera.rotation.y = yaw;
       camera.rotation.x = pitch;
-      camera.lookAt(lookTarget);
+      camera.rotation.y = yaw;
+
+      if (firstPersonWeapon) {
+        firstPersonWeapon.position.set(0.7, -0.55, -1.1);
+        firstPersonWeapon.rotation.set(0.2, Math.PI / 2.6, 0);
+      }
     }
 
     function updateEnemies(dt) {
