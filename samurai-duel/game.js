@@ -27,6 +27,8 @@ const duel = {
 };
 
 let last = performance.now();
+let accumulator = 0;
+const step = 1000 / 60;
 
 window.addEventListener("keydown", (event) => {
   if (duel.gameOver && event.key.toLowerCase() === "r") {
@@ -397,12 +399,15 @@ function draw() {
 }
 
 function loop(now) {
-  const elapsed = now - last;
-  if (elapsed >= 1000 / 60) {
-    last = now;
+  const elapsed = Math.min(100, now - last);
+  last = now;
+  accumulator += elapsed;
+
+  while (accumulator >= step) {
     update();
-    draw();
+    accumulator -= step;
   }
+  draw();
   requestAnimationFrame(loop);
 }
 
