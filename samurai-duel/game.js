@@ -104,7 +104,7 @@ function addSparks(x, y, color, count, power = 1) {
 }
 
 function isParryPerfect(enemy) {
-  return player.parryTimer > 0 && enemy.attackActive >= 5 && enemy.attackActive <= 8;
+  return player.parryTimer > 0 && enemy.attackActive >= 6 && enemy.attackActive <= 8;
 }
 
 function isParryLate(enemy) {
