@@ -180,6 +180,7 @@
     let yaw = 0;
     let pitch = 0;
     const cameraHeight = 1.6;
+    const groundHeight = 1.0;
     const attackState = {
       meleeCooldown: 0,
       throwCooldown: 0,
@@ -203,7 +204,7 @@
     function buildPlayerFromTemplate() {
       const mesh = playerModelTemplate.clone(true);
       scaleModelToHeight(mesh, cameraHeight);
-      mesh.position.set(0, 0.1, 0);
+      mesh.position.set(0, groundHeight, 0);
       mesh.rotation.y = Math.PI;
       mesh.traverse((child) => {
         if (child.isMesh) {
@@ -218,7 +219,7 @@
     function spawnEnemy(x, z) {
       const mesh = playerModelTemplate.clone(true);
       scaleModelToHeight(mesh, cameraHeight * 0.9);
-      mesh.position.set(x, 0.1, z);
+      mesh.position.set(x, groundHeight + 0.2, z);
       mesh.rotation.y = 0;
       mesh.traverse((child) => {
         if (child.isMesh) {
@@ -239,8 +240,8 @@
 
       firstPersonWeapon = batWeaponTemplate.clone(true);
       scaleModelToHeight(firstPersonWeapon, 1.0);
-      firstPersonWeapon.position.set(0.7, -0.6, -1.0);
-      firstPersonWeapon.rotation.set(0.35, Math.PI / 2.6, -0.2);
+      firstPersonWeapon.position.set(0.72, -0.62, -1.15);
+      firstPersonWeapon.rotation.set(0.45, Math.PI / 2.6, -0.2);
       camera.add(firstPersonWeapon);
     }
 
@@ -299,17 +300,17 @@
       attackState.meleeCooldown = 0.42;
       attackState.meleeSwing = 0.18;
 
-      const origin = camera.position.clone();
-      const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion).normalize();
-      const ray = new THREE.Raycaster(origin, dir, 0, 2.7);
-      const hitTargets = ray.intersectObjects(enemies.map((enemy) => enemy.mesh), true);
+      const attackDirection = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion).normalize();
 
-      if (hitTargets.length > 0) {
-        const hitEnemy = hitTargets[0].object;
-        const target = enemies.find((enemy) => enemy.mesh === hitEnemy || enemy.mesh.children.includes(hitEnemy) || hitEnemy.parent && enemy.mesh === hitEnemy.parent || hitEnemy.parent && enemy.mesh === hitEnemy.parent.parent);
-        if (target) {
-          target.mesh.scale.multiplyScalar(0.96);
-          target.mesh.position.y += 0.08;
+      for (const enemy of enemies) {
+        const toEnemy = enemy.mesh.position.clone().sub(camera.position);
+        const distance = toEnemy.length();
+        if (distance < 3.2) {
+          const facing = toEnemy.normalize().dot(attackDirection);
+          if (facing > 0.2) {
+            enemy.mesh.scale.multiplyScalar(0.96);
+            enemy.mesh.position.y += 0.08;
+          }
         }
       }
     }
@@ -320,7 +321,6 @@
 
       const projectile = batWeaponTemplate.clone(true);
       scaleModelToHeight(projectile, 1.0);
-      projectiles = projectiles || [];
       const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion).normalize();
       const start = camera.position.clone().add(dir.clone().multiplyScalar(0.9));
       projectile.position.copy(start);
@@ -357,14 +357,14 @@
     function updateCamera(dt) {
       if (!player) return;
 
-      camera.position.set(player.position.x, player.position.y + cameraHeight, player.position.z);
+      camera.position.set(player.position.x, player.position.y + cameraHeight - 0.15, player.position.z);
       camera.rotation.order = 'YXZ';
       camera.rotation.x = pitch;
       camera.rotation.y = yaw;
 
       if (firstPersonWeapon) {
-        firstPersonWeapon.position.set(0.7, -0.55, -1.0);
-        firstPersonWeapon.rotation.set(0.35, Math.PI / 2.6, -0.2);
+        firstPersonWeapon.position.set(0.72, -0.62, -1.15);
+        firstPersonWeapon.rotation.set(0.45, Math.PI / 2.6, -0.2);
         if (attackState.meleeSwing > 0) {
           firstPersonWeapon.rotation.z = -0.2 + Math.sin((0.18 - attackState.meleeSwing) * 30) * 0.8;
         }
