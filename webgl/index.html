@@ -248,8 +248,9 @@
       firstPersonWeapon = batWeaponTemplate.clone(true);
       scaleModelToHeight(firstPersonWeapon, 1.15);
       removeShadowPlanes(firstPersonWeapon);
-      firstPersonWeapon.position.set(0.8, -0.78, -1.35);
-      firstPersonWeapon.rotation.set(0.8, Math.PI / 2.2, 0.2);
+      firstPersonWeapon.position.set(0.9, -0.7, -1.35);
+      firstPersonWeapon.rotation.set(0.45, Math.PI / 2.2, 0.15);
+      firstPersonWeapon.visible = true;
       camera.add(firstPersonWeapon);
     }
 
@@ -306,14 +307,15 @@
 
       const attackDirection = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion).normalize();
 
-      for (const enemy of enemies) {
+      for (let i = enemies.length - 1; i >= 0; i--) {
+        const enemy = enemies[i];
         const toEnemy = enemy.mesh.position.clone().sub(camera.position);
         const distance = toEnemy.length();
         if (distance < 3.2) {
           const facing = toEnemy.clone().normalize().dot(attackDirection);
           if (facing > 0.2) {
-            enemy.mesh.scale.multiplyScalar(0.96);
-            enemy.hitTimer = 1.0;
+            scene.remove(enemy.mesh);
+            enemies.splice(i, 1);
           }
         }
       }
@@ -330,10 +332,17 @@
       const start = camera.position.clone().add(dir.clone().multiplyScalar(0.9));
       projectile.position.copy(start);
       projectile.rotation.copy(camera.rotation);
-      projectile.rotation.x += 0.8;
+      projectile.rotation.x += 0.85;
       projectile.rotation.z += 0.5;
+      projectile.visible = true;
       scene.add(projectile);
-      thrownBats.push({ mesh: projectile, velocity: dir.multiplyScalar(18) });
+      thrownBats.push({
+        mesh: projectile,
+        velocity: dir.multiplyScalar(18),
+        hitTimer: 0,
+        impactPosition: null,
+        lifetime: 1.5,
+      });
     }
 
     function handleMovement(dt) {
@@ -372,16 +381,17 @@
         const swingPhase = clamp(swingRatio, 0, 1);
 
         firstPersonWeapon.position.set(
-          0.9 + Math.sin(swingPhase * Math.PI) * 0.45,
-          -0.72 + Math.cos(swingPhase * Math.PI) * 0.18,
-          -1.25 + (1 - swingPhase) * 0.2
+          0.9 + Math.sin(swingPhase * Math.PI) * 0.55,
+          -0.72 + Math.cos(swingPhase * Math.PI) * 0.22,
+          -1.2 - Math.sin(swingPhase * Math.PI) * 0.25
         );
 
         firstPersonWeapon.rotation.set(
-          0.78 + Math.sin(swingPhase * Math.PI) * 1.15,
-          Math.PI / 2.2 + Math.sin(swingPhase * Math.PI) * 0.85,
-          0.22 + Math.cos(swingPhase * Math.PI) * 0.75
+          0.5 + Math.sin(swingPhase * Math.PI) * 1.2,
+          Math.PI / 2.2 + Math.sin(swingPhase * Math.PI) * 0.9,
+          0.2 + Math.cos(swingPhase * Math.PI) * 0.7
         );
+        firstPersonWeapon.visible = true;
       }
     }
 
@@ -456,7 +466,9 @@
 
         if (projectile.hitTimer > 0) {
           projectile.hitTimer -= dt;
-          projectile.mesh.position.copy(projectile.impactPosition);
+          if (projectile.impactPosition) {
+            projectile.mesh.position.copy(projectile.impactPosition);
+          }
           projectile.mesh.rotation.z += 0.2;
 
           if (projectile.hitTimer <= 0) {
@@ -466,14 +478,16 @@
           continue;
         }
 
+        projectile.lifetime -= dt;
         projectile.mesh.position.addScaledVector(projectile.velocity, dt);
         projectile.mesh.rotation.z += 0.25;
 
-        for (const enemy of enemies) {
+        for (let i = enemies.length - 1; i >= 0; i--) {
+          const enemy = enemies[i];
           if (projectile.mesh.position.distanceTo(enemy.mesh.position) < 1.8) {
-            enemy.mesh.scale.multiplyScalar(0.92);
-            enemy.hitTimer = 1.0;
-            projectile.hitTimer = 1.0;
+            scene.remove(enemy.mesh);
+            enemies.splice(i, 1);
+            projectile.hitTimer = 0.2;
             projectile.impactPosition = enemy.mesh.position.clone().add(new THREE.Vector3(0, 0.9, 0));
             projectile.mesh.position.copy(projectile.impactPosition);
             projectile.velocity.set(0, 0, 0);
@@ -481,7 +495,7 @@
           }
         }
 
-        if (projectile.hitTimer <= 0 && projectile.mesh.position.length() > 80) {
+        if (projectile.lifetime <= 0 || projectile.mesh.position.length() > 80) {
           scene.remove(projectile.mesh);
           thrownBats.splice(i, 1);
         }
