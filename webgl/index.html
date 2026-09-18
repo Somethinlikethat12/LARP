@@ -175,6 +175,8 @@
     let player = null;
     let enemies = [];
     let playerModelTemplate = null;
+    let yaw = 0;
+    let pitch = 0;
 
     function clamp(value, min, max) {
       return Math.min(max, Math.max(min, value));
@@ -254,7 +256,7 @@
     function handleMovement(dt) {
       if (!player) return;
 
-      const forward = new THREE.Vector3(Math.sin(player.rotation.y), 0, Math.cos(player.rotation.y));
+      const forward = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
       const right = new THREE.Vector3(forward.z, 0, -forward.x);
       const move = new THREE.Vector3();
 
@@ -271,17 +273,20 @@
       player.position.x = clamp(player.position.x, -45, 45);
       player.position.z = clamp(player.position.z, -45, 45);
 
-      player.rotation.y = Math.atan2(camera.rotation.y, 0);
+      player.rotation.y = yaw;
     }
 
     function updateCamera(dt) {
       if (!player) return;
 
       const lookTarget = player.position.clone().add(new THREE.Vector3(0, 1.6, 0));
-      const behind = new THREE.Vector3(-Math.sin(player.rotation.y), 0, -Math.cos(player.rotation.y));
+      const behind = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
       const desiredCamPos = lookTarget.clone().add(behind.multiplyScalar(7)).add(new THREE.Vector3(0, 2.2, 0));
 
       camera.position.lerp(desiredCamPos, 1 - Math.pow(0.01, dt));
+      camera.rotation.order = 'YXZ';
+      camera.rotation.y = yaw;
+      camera.rotation.x = pitch;
       camera.lookAt(lookTarget);
     }
 
@@ -313,11 +318,13 @@
     document.addEventListener('mousemove', (event) => {
       if (document.pointerLockElement !== renderer.domElement || !player) return;
 
-      player.rotation.y -= event.movementX * 0.0025;
-      player.rotation.x = clamp(player.rotation.x - event.movementY * 0.0015, -1.1, 1.1);
+      yaw -= event.movementX * 0.0025;
+      pitch = clamp(pitch - event.movementY * 0.0015, -1.1, 1.1);
+
+      player.rotation.y = yaw;
       camera.rotation.order = 'YXZ';
-      camera.rotation.y = player.rotation.y;
-      camera.rotation.x = player.rotation.x;
+      camera.rotation.y = yaw;
+      camera.rotation.x = pitch;
     });
 
     renderer.domElement.addEventListener('click', () => {
