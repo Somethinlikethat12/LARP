@@ -1009,10 +1009,6 @@ function canShoot() {
 	return run.state === "playing" && run.shots > 0 && cue.active && !shotInProgress && hitStop <= 0 && cue.vx * cue.vx + cue.vy * cue.vy < 25;
 }
 
-function isInputFocused(target) {
-	return target instanceof HTMLElement && target.closest("button, input, select, textarea, [contenteditable='true']") !== null;
-}
-
 function shoot() {
 	if (!canShoot()) return;
 	const dx = aim.x - cue.x;
@@ -1780,7 +1776,8 @@ canvas.addEventListener("pointercancel", (event) => {
 });
 
 window.addEventListener("keydown", (event) => {
-	if (isInputFocused(event.target) && event.target !== canvas) return;
+	const activeElement = document.activeElement;
+	if (activeElement instanceof HTMLElement && activeElement !== canvas && activeElement.matches("button, input, select, textarea, [contenteditable='true']")) return;
 	if (event.code === "Space" && !event.repeat) {
 		event.preventDefault();
 		shoot();
