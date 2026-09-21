@@ -1778,7 +1778,7 @@ canvas.addEventListener("pointercancel", (event) => {
 
 window.addEventListener("keydown", (event) => {
 	if (isInputFocused(event.target) && event.target !== canvas) return;
-	if ((event.code === "Space" || event.code === "Enter") && !event.repeat) {
+	if (event.code === "Space" && !event.repeat) {
 		event.preventDefault();
 		shoot();
 	}
