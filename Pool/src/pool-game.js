@@ -194,6 +194,7 @@ let currentDraftIsRelic = false;
 let rerollCost = 12;
 let menuActive = true;
 let selectedDifficultyId = "standard";
+let angleDragActive = false;
 
 function clamp(value, min, max) {
 	return Math.max(min, Math.min(max, value));
@@ -1008,6 +1009,10 @@ function canShoot() {
 	return run.state === "playing" && run.shots > 0 && cue.active && !shotInProgress && hitStop <= 0 && cue.vx * cue.vx + cue.vy * cue.vy < 25;
 }
 
+function isInputFocused(target) {
+	return target instanceof HTMLElement && target.closest("button, input, select, textarea, [contenteditable='true']") !== null;
+}
+
 function shoot() {
 	if (!canShoot()) return;
 	const dx = aim.x - cue.x;
@@ -1753,16 +1758,26 @@ angleSlider.addEventListener("input", () => {
 });
 
 canvas.addEventListener("pointermove", (event) => {
-	if (run.state === "playing" && !shotInProgress) setAngleFromPointer(event);
+	if (angleDragActive && run.state === "playing" && !shotInProgress) setAngleFromPointer(event);
 });
 canvas.addEventListener("pointerdown", (event) => {
 	if (run.state === "playing" && !shotInProgress) {
+		angleDragActive = true;
 		setAngleFromPointer(event);
 		canvas.setPointerCapture(event.pointerId);
 	}
 });
+canvas.addEventListener("pointerup", (event) => {
+	angleDragActive = false;
+	if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+});
+canvas.addEventListener("pointercancel", (event) => {
+	angleDragActive = false;
+	if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+});
 
 window.addEventListener("keydown", (event) => {
+	if (isInputFocused(event.target) && event.target !== canvas) return;
 	if ((event.code === "Space" || event.code === "Enter") && !event.repeat) {
 		event.preventDefault();
 		shoot();
