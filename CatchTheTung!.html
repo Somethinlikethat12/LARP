@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tung Tung vs Setan Catcher</title>
+
+    <style>
+        body {
+            margin: 0;
+            background: #222;
+            color: white;
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #game-container {
+            position: relative;
+        }
+
+        canvas {
+            border: 4px solid #fff;
+            background: #111;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+            transition: background-color 0.1s ease;
+            display: block;
+        }
+
+        #ui {
+            margin-bottom: 10px;
+            font-size: 20px;
+            font-weight: bold;
+            text-align: center;
+        }
+
+        /* Start Screen */
+        #start-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 400px;
+            height: 650px;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            box-sizing: border-box;
+            border: 4px solid transparent;
+        }
+
+        #start-screen h1 {
+            color: #00FFCC;
+            margin-bottom: 20px;
+            font-size: 28px;
+            text-shadow: 0 0 10px rgba(0, 255, 204, 0.5);
+            text-align: center;
+        }
+
+        #start-screen p {
+            font-size: 16px;
+            line-height: 1.5;
+            text-align: center;
+            margin-bottom: 30px;
+            color: #ccc;
+        }
+
+        #start-btn {
+            background: #00FFCC;
+            color: #111;
+            border: none;
+            padding: 12px 30px;
+            font-size: 18px;
+            font-weight: bold;
+            border-radius: 5px;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0, 255, 204, 0.3);
+            transition: transform 0.1s ease, background 0.2s ease;
+        }
+
+        #start-btn:hover {
+            background: #fff;
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="ui">
+        Score: <span id="score">0</span> |
+        High Score: <span id="highScore">0</span> |
+        Lives: <span id="lives">3</span>
+    </div>
+
+    <div id="game-container">
+        <canvas id="gameCanvas" width="400" height="650"></canvas>
+
+        <!-- Start Menu -->
+        <div id="start-screen">
+            <h1>Tung Tung vs Setan</h1>
+
+            <p>
+                Use <b>A / D</b> or <b>Left / Right Arrows</b> to move.<br>
+                Press <b>P</b> to pause/unpause during play.<br><br>
+                Catch the item logs for points.<br>
+                Avoid the flying demons!
+            </p>
+
+            <button id="start-btn">Start Game</button>
+        </div>
+    </div>
+
+    <script>
+        // =========================
+        // DOM ELEMENTS
+        // =========================
+
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+
+        const scoreEl = document.getElementById("score");
+        const highScoreEl = document.getElementById("highScore");
+        const livesEl = document.getElementById("lives");
+
+        const startScreen = document.getElementById("start-screen");
+        const startBtn = document.getElementById("start-btn");
+
+
+        // =========================
+        // GAME STATE
+        // =========================
+
+        let gameStarted = false;
+        let isPaused = false;
+        let score = 0;
+        let lives = 3;
+        let gameOver = false;
+
+
+        // =========================
+        // HIGH SCORE
+        // =========================
+
+        let highScore = Number(
+            localStorage.getItem("coinCatcherHighScore")
+        ) || 0;
+
+
+        // =========================
+        // SPRITES
+        // =========================
+
+        const coinSprite = new Image();
+        coinSprite.src = "tung.png";
+
+        const bombSprite = new Image();
+        bombSprite.src = "setan.png";
+
+
+        // =========================
+        // PLAYER
+        // =========================
+
+        const player = {
+            x: canvas.width / 2 - 30,
+            y: canvas.height - 30,
+            width: 60,
+            height: 15,
+            speed: 12,
+            color: "#00FFCC"
+        };
+
+
+        // =========================
+        // FALLING OBJECT
+        // =========================
+
+        const fallingObj = {
+            x: 0,
+            y: -60,
+            width: 35,
+            height: 70,
+            speed: 6,
+            type: "coin",
+            color: "#FFD700"
+        };
+
+
+        // =========================
+        // KEYBOARD INPUT
+        // =========================
+
+        const keys = {
+            Left: false,
+            Right: false
+        };
+
+
+        // =========================
+        // START GAME
+        // =========================
+
+        startBtn.addEventListener("click", startGame);
+
+
+        document.addEventListener("keydown", (e) => {
+
+            // Start game with SPACE
+            if (!gameStarted && e.code === "Space") {
+                startGame();
+                return;
+            }
+
+            // Restart after game over
+            if (gameOver && e.code === "Space") {
+                restartGame();
+                return;
+            }
+
+            // Pause/unpause
+            if (
+                gameStarted &&
+                !gameOver &&
+                (e.key === "p" || e.key === "P")
+            ) {
+                isPaused = !isPaused;
+                return;
+            }
+
+            // Don't move while paused
+            if (isPaused) return;
+
+            // Movement
+            if (
+                e.key === "ArrowLeft" ||
+                e.key === "a" ||
+                e.key === "A"
+            ) {
+                keys.Left = true;
+            }
+
+            if (
+                e.key === "ArrowRight" ||
+                e.key === "d" ||
+                e.key === "D"
+            ) {
+                keys.Right = true;
+            }
+        });
+
+
+        document.addEventListener("keyup", (e) => {
+
+            if (
+                e.key === "ArrowLeft" ||
+                e.key === "a" ||
+                e.key === "A"
+            ) {
+                keys.Left = false;
+            }
+
+            if (
+                e.key === "ArrowRight" ||
+                e.key === "d" ||
+                e.key === "D"
+            ) {
+                keys.Right = false;
+            }
+        });
+
+
+        function startGame() {
+            gameStarted = true;
+            isPaused = false;
+
+            startScreen.style.display = "none";
+
+            restartGame();
+        }
+
+
+        // =========================
+        // RESET FALLING OBJECT
+        // =========================
+
+        function resetFallingObject() {
+
+            // Increase speed as score increases
+            // NO SPEED CAP
+            const calculatedSpeed =
+                6 + Math.floor(score / 3) * 0.7;
+
+            fallingObj.speed = calculatedSpeed;
+
+
+            // 30% chance of a demon/bomb
+            if (Math.random() < 0.30) {
+
+                fallingObj.type = "bomb";
+                fallingObj.width = 55;
+                fallingObj.height = 55;
+                fallingObj.color = "#FF3333";
+
+            } else {
+
+                fallingObj.type = "coin";
+                fallingObj.width = 35;
+                fallingObj.height = 70;
+                fallingObj.color = "#FFD700";
+            }
+
+
+            // Random horizontal position
+            fallingObj.x =
+                Math.random() *
+                (canvas.width - fallingObj.width);
+
+            // Start above the canvas
+            fallingObj.y = -fallingObj.height;
+        }
+
+
+        // =========================
+        // HIGH SCORE
+        // =========================
+
+        function checkHighScore() {
+
+            if (score > highScore) {
+
+                highScore = score;
+
+                localStorage.setItem(
+                    "coinCatcherHighScore",
+                    highScore
+                );
+            }
+        }
+
+
+        // =========================
+        // RESTART GAME
+        // =========================
+
+        function restartGame() {
+
+            score = 0;
+            lives = 3;
+
+            gameOver = false;
+            isPaused = false;
+
+            player.x =
+                canvas.width / 2 -
+                player.width / 2;
+
+            resetFallingObject();
+
+            updateUI();
+
+            ctx.clearRect(
+                0,
+                0,
+                canvas.width,
+                canvas.height
+            );
+
+            draw();
+        }
+
+
+        // =========================
+        // UPDATE UI
+        // =========================
+
+        function updateUI() {
+
+            scoreEl.textContent = score;
+            highScoreEl.textContent = highScore;
+            livesEl.textContent = lives;
+        }
+
+
+        // =========================
+        // FLASH EFFECT
+        // =========================
+
+        function triggerFlash() {
+
+            canvas.style.backgroundColor = "#441111";
+
+            setTimeout(() => {
+
+                canvas.style.backgroundColor = "#111";
+
+            }, 100);
+        }
+
+
+        // =========================
+        // GAME UPDATE
+        // =========================
+
+        function update() {
+
+            // Stop updates when inactive
+            if (
+                !gameStarted ||
+                gameOver ||
+                isPaused
+            ) {
+                return;
+            }
+
+
+            // =========================
+            // PLAYER MOVEMENT
+            // =========================
+
+            if (keys.Left) {
+
+                player.x -= player.speed;
+            }
+
+            if (keys.Right) {
+
+                player.x += player.speed;
+            }
+
+
+            // Keep player inside canvas
+            if (player.x < 0) {
+                player.x = 0;
+            }
+
+            if (
+                player.x >
+                canvas.width - player.width
+            ) {
+                player.x =
+                    canvas.width - player.width;
+            }
+
+
+            // =========================
+            // FALLING OBJECT
+            // =========================
+
+            fallingObj.y += fallingObj.speed;
+
+
+            // =========================
+            // COLLISION DETECTION
+            // =========================
+
+            const collision =
+                fallingObj.y +
+                    fallingObj.height >=
+                    player.y &&
+
+                fallingObj.y <=
+                    player.y + player.height &&
+
+                fallingObj.x +
+                    fallingObj.width >=
+                    player.x &&
+
+                fallingObj.x <=
+                    player.x + player.width;
+
+
+            if (collision) {
+
+                if (fallingObj.type === "coin") {
+
+                    // Catching Tung = +1
+                    score++;
+
+                } else if (fallingObj.type === "bomb") {
+
+                    // Catching demon = -2
+                    score = Math.max(
+                        0,
+                        score - 2
+                    );
+
+                    triggerFlash();
+                }
+
+
+                checkHighScore();
+                updateUI();
+
+                resetFallingObject();
+            }
+
+
+            // =========================
+            // OBJECT MISSED
+            // =========================
+
+            if (fallingObj.y > canvas.height) {
+
+                if (fallingObj.type === "coin") {
+
+                    // Missing a coin costs a life
+                    lives--;
+
+                    updateUI();
+
+                    if (lives <= 0) {
+
+                        gameOver = true;
+
+                        checkHighScore();
+                        updateUI();
+
+                    } else {
+
+                        resetFallingObject();
+                    }
+
+                } else {
+
+                    // Missing a demon is okay
+                    resetFallingObject();
+                }
+            }
+        }
+
+
+        // =========================
+        // DRAW GAME
+        // =========================
+
+        function draw() {
+
+            ctx.clearRect(
+                0,
+                0,
+                canvas.width,
+                canvas.height
+            );
+
+
+            // =========================
+            // DRAW PLAYER
+            // =========================
+
+            ctx.fillStyle = player.color;
+
+            ctx.fillRect(
+                player.x,
+                player.y,
+                player.width,
+                player.height
+            );
+
+
+            // =========================
+            // DRAW FALLING OBJECT
+            // =========================
+
+            if (gameStarted) {
+
+                if (fallingObj.type === "coin") {
+
+                    if (
+                        coinSprite.complete &&
+                        coinSprite.naturalWidth !== 0
+                    ) {
+
+                        ctx.drawImage(
+                            coinSprite,
+                            fallingObj.x,
+                            fallingObj.y,
+                            fallingObj.width,
+                            fallingObj.height
+                        );
+
+                    } else {
+
+                        ctx.fillStyle =
+                            fallingObj.color;
+
+                        ctx.fillRect(
+                            fallingObj.x,
+                            fallingObj.y,
+                            fallingObj.width,
+                            fallingObj.height
+                        );
+                    }
+
+
+                } else if (
+                    fallingObj.type === "bomb"
+                ) {
+
+                    if (
+                        bombSprite.complete &&
+                        bombSprite.naturalWidth !== 0
+                    ) {
+
+                        ctx.drawImage(
+                            bombSprite,
+                            fallingObj.x,
+                            fallingObj.y,
+                            fallingObj.width,
+                            fallingObj.height
+                        );
+
+                    } else {
+
+                        ctx.fillStyle =
+                            fallingObj.color;
+
+                        ctx.fillRect(
+                            fallingObj.x,
+                            fallingObj.y,
+                            fallingObj.width,
+                            fallingObj.height
+                        );
+                    }
+                }
+            }
+
+
+            // =========================
+            // PAUSE SCREEN
+            // =========================
+
+            if (isPaused && !gameOver) {
+
+                ctx.fillStyle =
+                    "rgba(0, 0, 0, 0.6)";
+
+                ctx.fillRect(
+                    0,
+                    0,
+                    canvas.width,
+                    canvas.height
+                );
+
+                ctx.fillStyle = "#FFD700";
+
+                ctx.font =
+                    "30px sans-serif";
+
+                ctx.textAlign = "center";
+
+                ctx.fillText(
+                    "PAUSED",
+                    canvas.width / 2,
+                    canvas.height / 2 - 10
+                );
+
+                ctx.fillStyle = "#FFF";
+
+                ctx.font =
+                    "16px sans-serif";
+
+                ctx.fillText(
+                    "Press P to Resume",
+                    canvas.width / 2,
+                    canvas.height / 2 + 25
+                );
+            }
+
+
+            // =========================
+            // GAME OVER SCREEN
+            // =========================
+
+            if (gameOver) {
+
+                ctx.fillStyle =
+                    "rgba(0, 0, 0, 0.8)";
+
+                ctx.fillRect(
+                    0,
+                    0,
+                    canvas.width,
+                    canvas.height
+                );
+
+                ctx.textAlign = "center";
+
+                ctx.fillStyle = "#FF3333";
+
+                ctx.font =
+                    "30px sans-serif";
+
+                ctx.fillText(
+                    "GAME OVER",
+                    canvas.width / 2,
+                    canvas.height / 2 - 15
+                );
+
+                ctx.fillStyle = "#FFF";
+
+                ctx.font =
+                    "16px sans-serif";
+
+                ctx.fillText(
+                    `Final Score: ${score}`,
+                    canvas.width / 2,
+                    canvas.height / 2 + 15
+                );
+
+                ctx.fillText(
+                    "Press SPACEBAR to Play Again",
+                    canvas.width / 2,
+                    canvas.height / 2 + 45
+                );
+            }
+        }
+
+
+        // =========================
+        // MAIN GAME LOOP
+        // =========================
+
+        function gameLoop() {
+
+            update();
+            draw();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+
+        // =========================
+        // INITIALIZE
+        // =========================
+
+        updateUI();
+        gameLoop();
+
+    </script>
+
+</body>
+</html>
