@@ -3,6 +3,9 @@
 const canvas = document.getElementById("table");
 const ctx = canvas.getContext("2d", { alpha: false });
 const tableFrame = document.getElementById("table-frame");
+const angleSlider = document.getElementById("angle-slider");
+const angleFill = document.getElementById("angle-fill");
+const angleReadout = document.getElementById("angle-readout");
 const powerSlider = document.getElementById("power-slider");
 const powerFill = document.getElementById("power-fill");
 const powerReadout = document.getElementById("power-readout");
@@ -57,6 +60,7 @@ const menuModal = document.getElementById("menu-modal");
 const menuBestScore = document.getElementById("menu-best-score");
 const difficultyGrid = document.getElementById("difficulty-grid");
 const startRunButton = document.getElementById("start-run-button");
+const shootButton = document.getElementById("shoot-button");
 
 const lowPowerDevice = (navigator.hardwareConcurrency || 6) <= 4 || (navigator.deviceMemory || 6) <= 4;
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -74,6 +78,7 @@ const TABLE_PALETTES = {
 	house: ["#683a3d", "#432329", "#241116"]
 };
 const DEFAULT_POWER = 28;
+const DEFAULT_ANGLE = 0;
 const MIN_IMPACT_SPEED = 120;
 const PHYSICS_STEP = 1 / 180;
 const RAIL = 28;
@@ -170,7 +175,7 @@ let renderScale = 1;
 let tableLayer = null;
 let spriteCache = new Map();
 let power = DEFAULT_POWER;
-let charging = false;
+let shotAngle = DEFAULT_ANGLE;
 let shotInProgress = false;
 let shotPocketed = 0;
 let scratch = false;
@@ -505,7 +510,6 @@ function makeResultStat(label, value) {
 
 function endRun(won, message) {
 	run.state = won ? "victory" : "defeat";
-	charging = false;
 	shotInProgress = false;
 	hideModal(encounterModal);
 	hideModal(rewardModal);
@@ -871,8 +875,7 @@ function resize() {
 		ball.r = Math.min(11, Math.max(7.5, W * 0.0125, H * 0.024));
 		ball.trail.length = 0;
 	}
-	aim.x *= scaleX;
-	aim.y *= scaleY;
+	syncAimFromAngle();
 }
 
 function rack(retry = false) {
@@ -881,7 +884,7 @@ function rack(retry = false) {
 	particles.length = 0;
 	pocketEffects.length = 0;
 	power = DEFAULT_POWER;
-	charging = false;
+	shotAngle = DEFAULT_ANGLE;
 	shotInProgress = false;
 	shotPocketed = 0;
 	scratch = false;
@@ -903,8 +906,7 @@ function rack(retry = false) {
 	cue.angle = 0;
 	cue.cooldown = 0;
 	cue.trail.length = 0;
-	aim.x = cue.x + W * 0.35;
-	aim.y = cue.y;
+	syncAimFromAngle();
 
 	const startX = W * 0.69;
 	const startY = H * 0.5;
@@ -936,6 +938,7 @@ function rack(retry = false) {
 
 	powerSlider.value = String(DEFAULT_POWER);
 	setPower(DEFAULT_POWER);
+	setAngle(0);
 	shotLabel.textContent = "Ready";
 	shotDetail.textContent = objectiveText(currentEncounter(), shotsFor(currentEncounter()));
 	prepareEncounter(retry);
@@ -979,25 +982,34 @@ function setPower(value) {
 	powerReadout.textContent = String(Math.round(power));
 }
 
-function pointerPosition(event) {
+function syncAimFromAngle(length = Math.max(W, H) || 1) {
+	aim.x = cue.x + Math.cos(shotAngle) * length;
+	aim.y = cue.y + Math.sin(shotAngle) * length;
+}
+
+function setAngle(value) {
+	const degrees = clamp(Number(value), -180, 180);
+	shotAngle = (degrees * Math.PI) / 180;
+	angleSlider.value = String(Math.round(degrees));
+	angleReadout.value = `${Math.round(degrees)}°`;
+	angleReadout.textContent = `${Math.round(degrees)}°`;
+	angleFill.style.width = `${((degrees + 180) / 360) * 100}%`;
+	syncAimFromAngle();
+}
+
+function setAngleFromPointer(event) {
 	const bounds = canvas.getBoundingClientRect();
-	aim.x = clamp(event.clientX - bounds.left, 0, W);
-	aim.y = clamp(event.clientY - bounds.top, 0, H);
+	const targetX = clamp(event.clientX - bounds.left, 0, W);
+	const targetY = clamp(event.clientY - bounds.top, 0, H);
+	setAngle((Math.atan2(targetY - cue.y, targetX - cue.x) * 180) / Math.PI);
 }
 
 function canShoot() {
 	return run.state === "playing" && run.shots > 0 && cue.active && !shotInProgress && hitStop <= 0 && cue.vx * cue.vx + cue.vy * cue.vy < 25;
 }
 
-function beginCharge() {
-	if (!canShoot()) return;
-	charging = true;
-	shotLabel.textContent = "Charging";
-	shotDetail.textContent = power > 78 ? "Heavy strike" : "Release to shoot";
-}
-
 function shoot() {
-	if (!charging || !canShoot()) return;
+	if (!canShoot()) return;
 	const dx = aim.x - cue.x;
 	const dy = aim.y - cue.y;
 	const distance = Math.hypot(dx, dy) || 1;
@@ -1008,7 +1020,6 @@ function shoot() {
 	cue.vx = (dx / distance) * force;
 	cue.vy = (dy / distance) * force;
 	cue.angle = Math.atan2(dy, dx);
-	charging = false;
 	shotInProgress = true;
 	shotPocketed = 0;
 	scratch = false;
@@ -1353,8 +1364,7 @@ function finishShot() {
 		cue.vy = 0;
 		cue.active = true;
 		cue.trail.length = 0;
-		aim.x = cue.x + W * 0.3;
-		aim.y = cue.y;
+		syncAimFromAngle();
 	}
 	respotEight();
 
@@ -1367,8 +1377,8 @@ function finishShot() {
 		run.combo = 0;
 	}
 	shotInProgress = false;
+	syncAimFromAngle();
 	rackBreak = false;
-	charging = false;
 	if (run.sunk >= encounterTarget(currentEncounter()) && (!currentEncounter().boss || run.eightSunk)) {
 		completeEncounter();
 		return;
@@ -1522,7 +1532,7 @@ function computeBankPreview(startX, startY, dirX, dirY, bounds) {
 function drawAimGuide() {
 	if (!cue.active || shotInProgress) return;
 	const prediction = aimPrediction();
-	const alpha = charging ? 0.76 : 0.5;
+	const alpha = 0.6;
 	const line = ctx.createLinearGradient(cue.x, cue.y, prediction.endX, prediction.endY);
 	line.addColorStop(0, `rgba(114, 232, 202, ${alpha})`);
 	line.addColorStop(0.72, `rgba(243, 236, 221, ${alpha * 0.82})`);
@@ -1573,7 +1583,7 @@ function drawAimGuide() {
 }
 
 function drawCueStick(directionX, directionY) {
-	const chargePull = charging ? 18 + power * 0.34 : 18;
+	const chargePull = 18;
 	const tipX = cue.x - directionX * (cue.r + chargePull);
 	const tipY = cue.y - directionY * (cue.r + chargePull);
 	const endX = tipX - directionX * Math.min(190, W * 0.22);
@@ -1730,10 +1740,6 @@ function draw() {
 function loop(time) {
 	const dt = Math.min(0.033, (time - lastTime) / 1000 || 0);
 	lastTime = time;
-	if (charging && canShoot()) {
-		setPower(Math.min(100, power + dt * 38));
-		shotDetail.textContent = power > 78 ? "Heavy strike" : power > 48 ? "Firm strike" : "Release to shoot";
-	}
 	update(dt);
 	draw();
 	requestAnimationFrame(loop);
@@ -1742,38 +1748,27 @@ function loop(time) {
 powerSlider.addEventListener("input", () => {
 	if (!shotInProgress) setPower(powerSlider.value);
 });
+angleSlider.addEventListener("input", () => {
+	if (!shotInProgress) setAngle(angleSlider.value);
+});
 
-canvas.addEventListener("pointermove", pointerPosition);
+canvas.addEventListener("pointermove", (event) => {
+	if (run.state === "playing" && !shotInProgress) setAngleFromPointer(event);
+});
 canvas.addEventListener("pointerdown", (event) => {
-	pointerPosition(event);
-	beginCharge();
-	canvas.setPointerCapture(event.pointerId);
-});
-canvas.addEventListener("pointerup", (event) => {
-	pointerPosition(event);
-	shoot();
-});
-canvas.addEventListener("pointercancel", () => {
-	charging = false;
-	shotLabel.textContent = "Ready";
+	if (run.state === "playing" && !shotInProgress) {
+		setAngleFromPointer(event);
+		canvas.setPointerCapture(event.pointerId);
+	}
 });
 
 window.addEventListener("keydown", (event) => {
-	if (event.code === "Space" && !event.repeat) {
-		event.preventDefault();
-		beginCharge();
-	}
-	if (event.key === "Escape" && charging) {
-		charging = false;
-		shotLabel.textContent = "Ready";
-	}
-});
-window.addEventListener("keyup", (event) => {
-	if (event.code === "Space") {
+	if ((event.code === "Space" || event.code === "Enter") && !event.repeat) {
 		event.preventDefault();
 		shoot();
 	}
 });
+shootButton.addEventListener("click", shoot);
 
 soundButton.addEventListener("click", () => {
 	soundEnabled = !soundEnabled;

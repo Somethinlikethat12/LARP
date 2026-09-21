@@ -116,6 +116,15 @@
 		</section>
 
 		<footer class="controls">
+			<div class="angle-control">
+				<label for="angle-slider">
+					<span>Angle</span>
+					<output id="angle-readout">0°</output>
+				</label>
+				<input id="angle-slider" type="range" min="-180" max="180" step="1" value="0" aria-label="Shot angle">
+				<div class="angle-line" aria-hidden="true"><i id="angle-fill"></i></div>
+			</div>
+
 			<div class="power-control">
 				<label for="power-slider">
 					<span>Power</span>
@@ -136,6 +145,7 @@
 			</div>
 
 			<div class="actions">
+				<button id="shoot-button" type="button">Shoot</button>
 				<button id="sound-button" type="button" aria-pressed="true">Sound on</button>
 				<button id="rack-button" type="button">Abandon run</button>
 			</div>
