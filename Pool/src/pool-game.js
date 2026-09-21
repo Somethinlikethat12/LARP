@@ -1765,6 +1765,7 @@ canvas.addEventListener("pointerdown", (event) => {
 });
 canvas.addEventListener("pointerup", (event) => {
 	if (angleDragActive && event.pointerType === "touch" && run.state === "playing" && !shotInProgress) {
+		setAngleFromPointer(event);
 		shoot();
 	}
 	angleDragActive = false;
@@ -1776,8 +1777,7 @@ canvas.addEventListener("pointercancel", (event) => {
 });
 
 window.addEventListener("keydown", (event) => {
-	const activeElement = document.activeElement;
-	if (activeElement instanceof HTMLElement && activeElement !== canvas && activeElement.matches("button, input, select, textarea, [contenteditable='true']")) return;
+	if (document.activeElement !== canvas) return;
 	if (event.code === "Space" && !event.repeat) {
 		event.preventDefault();
 		shoot();
