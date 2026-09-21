@@ -1768,6 +1768,9 @@ canvas.addEventListener("pointerdown", (event) => {
 	}
 });
 canvas.addEventListener("pointerup", (event) => {
+	if (angleDragActive && event.pointerType === "touch" && run.state === "playing" && !shotInProgress) {
+		shoot();
+	}
 	angleDragActive = false;
 	if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
 });
