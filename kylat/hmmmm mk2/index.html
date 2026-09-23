@@ -22,6 +22,49 @@
         </div>
     </div>
 
+    <div id="combat-screen" class="combat-screen" style="display: none;">
+        <div class="combat-panel">
+            <div class="combat-header">
+                <div>
+                    <div class="combat-kicker">ENCOUNTER</div>
+                    <h2 id="battle-enemy-name">ENEMY</h2>
+                </div>
+                <div id="battle-enemy-type" class="combat-enemy-type">WILD MONSTER</div>
+            </div>
+
+            <div class="combat-battlefield">
+                <div class="fight-box player-box">
+                    <div class="fighter-label">PARTY</div>
+                    <div id="battle-player-name" class="fighter-name">CLOUD</div>
+                    <div class="hp-row">
+                        <span>HP</span>
+                        <div class="hp-bar"><span id="player-hp-fill" class="hp-fill player-fill"></span></div>
+                    </div>
+                    <div id="player-hp-text" class="hp-text">150 / 150</div>
+                </div>
+
+                <div class="fight-box enemy-box">
+                    <div class="fighter-label">ENEMY</div>
+                    <div id="battle-enemy-label" class="fighter-name">BOSS</div>
+                    <div class="hp-row">
+                        <span>HP</span>
+                        <div class="hp-bar enemy-hp-bar"><span id="enemy-hp-fill" class="hp-fill enemy-fill"></span></div>
+                    </div>
+                    <div id="enemy-hp-text" class="hp-text">80 / 80</div>
+                </div>
+            </div>
+
+            <div class="combat-actions">
+                <button class="battle-action" data-action="attack">ATTACK</button>
+                <button class="battle-action" data-action="magic">MAGIC</button>
+                <button class="battle-action" data-action="guard">GUARD</button>
+                <button class="battle-action" data-action="flee">FLEE</button>
+            </div>
+
+            <div id="battle-log" class="battle-log">Choose an action.</div>
+        </div>
+    </div>
+
     <!-- MAIN INVENTORY WINDOW (Toggled via 'I') -->
     <div id="window-inventory" class="menu-window" style="display: none;">
         <div class="menu-sidebar"> 

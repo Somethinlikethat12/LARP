@@ -1,7 +1,7 @@
 // === EXISTING CHARACTER/INVENTORY DATA PRESETS ===
 const partyData = {
-    cloud: { name: "CLOUD", class: "melee", atk: 84, def: 62, equipment: { helmet: "Empty", chest: "Empty", arms: "Empty", leggings: "Empty", boots: "Empty", amulet: "Empty", ring: "Empty", weapon: "Empty", focus: "N/A", ammo: "N/A" }},
-    aerith: { name: "AERITH", class: "magic", atk: 32, def: 45, equipment: { helmet: "Empty", chest: "Empty", arms: "Empty", leggings: "Empty", boots: "Empty", amulet: "Empty", ring: "Empty", weapon: "N/A", focus: "Empty", ammo: "N/A" }}
+    cloud: { name: "CLOUD", class: "melee", atk: 84, def: 62, maxHp: 150, hp: 150, equipment: { helmet: "Empty", chest: "Empty", arms: "Empty", leggings: "Empty", boots: "Empty", amulet: "Empty", ring: "Empty", weapon: "Empty", focus: "N/A", ammo: "N/A" }},
+    aerith: { name: "AERITH", class: "magic", atk: 32, def: 45, maxHp: 120, hp: 120, equipment: { helmet: "Empty", chest: "Empty", arms: "Empty", leggings: "Empty", boots: "Empty", amulet: "Empty", ring: "Empty", weapon: "N/A", focus: "Empty", ammo: "N/A" }}
 };
 const tabConfigs = { one: "WEAPONS", two: "SCROLLS", three: "ARMOR", four: "KEY ITEMS" };
 let currentCharacterId = "cloud", selectedInventoryRow = null;
@@ -21,6 +21,169 @@ let player = { x: 2, y: 2 }; // Grid tile coordinates
 
 // Interactive Boss NPC Setting
 let boss = { x: 18, y: 12, active: true };
+
+const battleState = {
+    active: false,
+    enemy: null,
+    playerGuard: false,
+    log: "Choose an action."
+};
+
+const enemyTemplates = [
+    { name: "MAD SLIME", type: "wild", hp: 44, atk: 10 },
+    { name: "BLOOD WOLF", type: "wild", hp: 58, atk: 13 },
+    { name: "MAGE THORN", type: "wild", hp: 64, atk: 18 },
+    { name: "SEPHIROTH", type: "boss", hp: 110, atk: 24 }
+];
+
+function randomBetween(min, max) {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function getCurrentPartyMember() {
+    return partyData[currentCharacterId];
+}
+
+function updateCombatUI() {
+    const combatScreen = document.getElementById("combat-screen");
+    if (!combatScreen || !battleState.active || !battleState.enemy) return;
+
+    const current = getCurrentPartyMember();
+    const enemy = battleState.enemy;
+
+    document.getElementById("battle-player-name").textContent = current.name;
+    document.getElementById("battle-enemy-name").textContent = enemy.name;
+    document.getElementById("battle-enemy-label").textContent = enemy.name;
+    document.getElementById("battle-enemy-type").textContent = enemy.type === "boss" ? "BOSS ENEMY" : "WILD ENCOUNTER";
+    document.getElementById("battle-log").textContent = battleState.log;
+
+    const playerHpPercent = (current.hp / current.maxHp) * 100;
+    const enemyHpPercent = (enemy.hp / enemy.maxHp) * 100;
+    document.getElementById("player-hp-fill").style.width = `${Math.max(0, playerHpPercent)}%`;
+    document.getElementById("enemy-hp-fill").style.width = `${Math.max(0, enemyHpPercent)}%`;
+    document.getElementById("player-hp-text").textContent = `${current.hp} / ${current.maxHp} HP`;
+    document.getElementById("enemy-hp-text").textContent = `${enemy.hp} / ${enemy.maxHp} HP`;
+}
+
+function startBattle(enemyName = null, enemyType = "wild") {
+    const enemyTemplate = enemyTemplates.find((enemy) => enemy.name === enemyName) || enemyTemplates[Math.floor(Math.random() * (enemyTemplates.length - 1))];
+    const enemy = {
+        name: enemyName || enemyTemplate.name,
+        type: enemyType === "boss" ? "boss" : enemyTemplate.type,
+        maxHp: enemyName === "SEPHIROTH" || enemyType === "boss" ? 110 : enemyTemplate.hp,
+        hp: enemyName === "SEPHIROTH" || enemyType === "boss" ? 110 : enemyTemplate.hp,
+        atk: enemyName === "SEPHIROTH" || enemyType === "boss" ? 24 : enemyTemplate.atk,
+        isBoss: enemyType === "boss" || enemyName === "SEPHIROTH"
+    };
+
+    battleState.active = true;
+    battleState.enemy = enemy;
+    battleState.playerGuard = false;
+    battleState.log = `${enemy.name} lunges into battle!`;
+
+    document.getElementById("window-map").style.display = "none";
+    document.getElementById("window-inventory").style.display = "none";
+    document.getElementById("window-character").style.display = "none";
+    document.getElementById("combat-screen").style.display = "flex";
+    gameMode = "combat";
+    updateCombatUI();
+}
+
+function resolveEnemyTurn() {
+    const current = getCurrentPartyMember();
+    const enemy = battleState.enemy;
+    const attackPower = enemy.atk + randomBetween(0, 8);
+    let incomingDamage = attackPower - Math.floor(current.def / 6);
+
+    if (battleState.playerGuard) {
+        incomingDamage = Math.max(2, Math.floor(incomingDamage * 0.35));
+        battleState.playerGuard = false;
+        battleState.log = `${enemy.name} hits through your guard for ${incomingDamage} damage.`;
+    } else {
+        battleState.log = `${enemy.name} strikes for ${incomingDamage} damage.`;
+    }
+
+    current.hp = Math.max(0, current.hp - incomingDamage);
+    updateCombatUI();
+
+    if (current.hp <= 0) {
+        battleState.active = false;
+        current.hp = current.maxHp;
+        battleState.log = `${current.name} was defeated. The party retreats to the map.`;
+        document.getElementById("combat-screen").style.display = "none";
+        document.getElementById("window-map").style.display = "flex";
+        gameMode = "map";
+        updateCombatUI();
+        return;
+    }
+}
+
+function resolveBattleAction(action) {
+    if (!battleState.active || !battleState.enemy) return;
+
+    const current = getCurrentPartyMember();
+    const enemy = battleState.enemy;
+
+    if (action === "attack") {
+        const damage = randomBetween(12, 24) + Math.floor(current.atk / 8);
+        enemy.hp = Math.max(0, enemy.hp - damage);
+        battleState.log = `${current.name} attacks for ${damage} damage.`;
+    }
+
+    if (action === "magic") {
+        if (current.class === "magic") {
+            const damage = randomBetween(14, 30) + Math.floor(current.atk / 6);
+            enemy.hp = Math.max(0, enemy.hp - damage);
+            battleState.log = `${current.name} casts a spell for ${damage} damage.`;
+        } else {
+            const damage = randomBetween(8, 16) + Math.floor(current.atk / 10);
+            enemy.hp = Math.max(0, enemy.hp - damage);
+            battleState.log = `${current.name} uses a desperate melee burst for ${damage} damage.`;
+        }
+    }
+
+    if (action === "guard") {
+        battleState.playerGuard = true;
+        battleState.log = `${current.name} braces for impact.`;
+    }
+
+    if (action === "flee") {
+        if (Math.random() < 0.6) {
+            battleState.active = false;
+            battleState.enemy = null;
+            battleState.log = `${current.name} escapes the encounter.`;
+            document.getElementById("combat-screen").style.display = "none";
+            document.getElementById("window-map").style.display = "flex";
+            gameMode = "map";
+            return;
+        }
+        battleState.log = `${current.name} fails to escape!`;
+    }
+
+    updateCombatUI();
+
+    if (enemy.hp <= 0) {
+        battleState.log = `${enemy.name} is defeated!`;
+        if (enemy.isBoss) {
+            boss.active = false;
+            battleState.log = `Boss defeated! ${current.name} takes control of the arena.`;
+        }
+        battleState.active = false;
+        battleState.enemy = null;
+        document.getElementById("combat-screen").style.display = "none";
+        document.getElementById("window-map").style.display = "flex";
+        gameMode = "map";
+        updateCombatUI();
+        drawMap();
+        return;
+    }
+
+    if (action !== "guard" && action !== "flee") {
+        resolveEnemyTurn();
+    } else if (action === "flee" && battleState.active) {
+        resolveEnemyTurn();
+    }
+}
 
 // World Matrix Map Array Setup
 // 0 = Walkable, 1 = Solid Wall, 2 = Random Encounter Tall Grass, 3 = Boss Block Area
@@ -89,7 +252,7 @@ function movePlayer(dx, dy) {
 
         // Process Boss Object Contact Collision Check
         if (targetX === boss.x && targetY === boss.y && boss.active) {
-            triggerDialogue("SEPHIROTH: 'So... you have arrived at last, Cloud.'");
+            startBattle("SEPHIROTH", "boss");
             return;
         }
 
@@ -100,8 +263,9 @@ function movePlayer(dx, dy) {
 
             // Random Battle roll trigger if walking inside deep tall grass cells
             if (destinationTile === 2) {
-                if (Math.random() < 0.12) { // 12% odds per motion step
-                    console.log("Random Battle Triggered! (System placeholder)");
+                if (Math.random() < 0.22) {
+                    startBattle();
+                    return;
                 }
             }
         }
@@ -236,6 +400,10 @@ document.querySelectorAll(".char-tab").forEach(tab => {
 
 document.getElementById("btn-cancel").addEventListener("click", () => {
     document.getElementById("confirm-modal").style.display = "none";
+});
+
+document.querySelectorAll(".battle-action").forEach(button => {
+    button.addEventListener("click", () => resolveBattleAction(button.dataset.action));
 });
 
 filterMenu("one");

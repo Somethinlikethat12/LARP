@@ -73,3 +73,44 @@ tr:hover td { background-color: rgb(25, 6, 6); }
 .modal-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(0, 0, 0, 0.7); display: flex; justify-content: center; align-items: center; z-index: 2000; }
 .modal-box { background-color: rgb(25, 6, 6); border: 3px solid rgb(200, 50, 50); padding: 25px; width: 300px; text-align: center; }
 .modal-buttons button { background: rgb(40,10,10); border: 1px solid rgb(200,50,50); color: white; padding: 6px 12px; cursor: pointer; margin: 4px; }
+
+.combat-screen {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: rgba(8, 2, 2, 0.82); z-index: 1500;
+}
+.combat-panel {
+    width: min(760px, 88vw); background: rgba(25, 6, 6, 0.96); border: 3px solid rgb(200, 50, 50);
+    box-shadow: 0 0 25px rgba(0,0,0,0.7); padding: 26px; color: #fff;
+}
+.combat-header {
+    display: flex; justify-content: space-between; align-items: center; gap: 16px; border-bottom: 2px solid rgba(200, 50, 50, 0.5); padding-bottom: 10px; margin-bottom: 18px;
+}
+.combat-kicker { font-size: 11px; color: #ff9a9a; letter-spacing: 2px; }
+.combat-enemy-type { color: #ffb3b3; font-size: 12px; text-transform: uppercase; }
+.combat-battlefield {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin-bottom: 18px;
+}
+.fight-box {
+    background: rgb(15, 3, 3); border: 1px solid rgb(80, 30, 30); padding: 18px; min-height: 150px;
+}
+.fighter-label { color: #9b8a8a; text-transform: uppercase; font-size: 11px; letter-spacing: 2px; margin-bottom: 6px; }
+.fighter-name { font-size: 28px; color: #fff; margin-bottom: 10px; }
+.hp-row { display: flex; align-items: center; gap: 10px; }
+.hp-bar {
+    flex: 1; height: 16px; border: 1px solid #6b1d1d; background: rgba(255,255,255,0.08); overflow: hidden;
+}
+.hp-fill {
+    display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #6fdd55, #b6ff7e);
+}
+.enemy-fill { background: linear-gradient(90deg, #ff5f5f, #ffb07e); }
+.hp-text { margin-top: 8px; font-size: 13px; color: #eee; }
+.combat-actions {
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 18px;
+}
+.battle-action {
+    background: rgba(80, 20, 20, 0.9); border: 1px solid rgb(200, 50, 50); color: white; padding: 10px 10px; cursor: pointer; font-weight: bold; text-transform: uppercase;
+}
+.battle-action:hover { background: rgba(120,30,30,0.9); }
+.battle-log {
+    background: rgba(0,0,0,0.2); border: 1px solid rgba(200,50,50,0.35); min-height: 54px; padding: 12px; color: #ffe7e7; line-height: 1.4; font-size: 14px;
+}
