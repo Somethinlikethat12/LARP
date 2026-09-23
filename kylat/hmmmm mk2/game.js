@@ -275,13 +275,25 @@ function renderRosterLists() {
 
 function populateActMenu() {
     const menu = document.getElementById("act-menu-rows");
+    if (!menu) return;
+
     const current = getCurrentBattleActor();
-    if (!menu || !current || current.side !== "party") {
-        if (menu) menu.innerHTML = "";
+    let actor = null;
+
+    if (current && current.side === "party" && current.id && partyData[current.id]) {
+        actor = partyData[current.id];
+    } else if (partyData[currentCharacterId]) {
+        actor = partyData[currentCharacterId];
+    } else {
+        const firstParty = getLivingPartyMembers()[0];
+        actor = firstParty ? partyData[firstParty.id] : null;
+    }
+
+    if (!actor) {
+        menu.innerHTML = "";
         return;
     }
 
-    const actor = partyData[current.id];
     const moves = getAbilityOptions(actor).map((move) => {
         if (move.name === "Guard") return { action: "guard", move: move.name, text: move.text };
         if (move.name === "Flee") return { action: "flee", move: move.name, text: move.text };
@@ -812,13 +824,20 @@ function openActMenu() {
     const menu = document.getElementById("window-act");
     const inventory = document.getElementById("window-inventory");
     const character = document.getElementById("window-character");
+    const combatScreen = document.getElementById("combat-screen");
 
     if (inventory) inventory.style.display = "none";
     if (character) character.style.display = "none";
+    if (combatScreen) combatScreen.style.zIndex = "1000";
     if (!menu) return;
 
+    const current = getCurrentBattleActor();
+    if (current && current.side === "party" && current.id && partyData[current.id]) {
+        currentCharacterId = current.id;
+    }
+
     menu.style.display = "flex";
-    menu.style.zIndex = "2000";
+    menu.style.zIndex = "4000";
     populateActMenu();
 }
 
