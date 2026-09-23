@@ -274,28 +274,32 @@ function renderRosterLists() {
 }
 
 function refreshAbilitySelect() {
-    const select = document.getElementById("battle-ability-select");
-    if (!select) return;
-
     const current = getCurrentBattleActor();
-    if (!current || current.side !== "party") {
-        select.disabled = true;
-        select.innerHTML = '<option value="Basic Attack">Basic Attack</option>';
-        return;
-    }
+    const menu = document.getElementById("act-menu");
+    if (!menu) return;
 
-    const options = getAbilityOptions(current);
-    select.disabled = false;
-    const currentValue = select.value || options[0].name;
-    select.innerHTML = options.map((move) => `<option value="${move.name}" ${move.name === currentValue ? "selected" : ""}>${move.name}</option>`).join("");
+    const buttons = menu.querySelectorAll(".act-option");
+    buttons.forEach((button) => {
+        const moveName = button.dataset.move || "Basic Attack";
+        const isPartyTurn = current && current.side === "party";
+        const isAllowed = !isPartyTurn ? false : true;
+        button.disabled = !isAllowed;
+        button.style.opacity = isAllowed ? "1" : "0.5";
+        if (moveName === "Flee") button.style.display = "block";
+    });
+
+    if (!current || current.side !== "party") {
+        menu.hidden = true;
+    }
 }
 
 function resolveSelectedCombatAction() {
-    const select = document.getElementById("battle-ability-select");
-    const choice = select?.value || "Basic Attack";
+    const menu = document.getElementById("act-menu");
+    const selected = menu?.querySelector(".act-option.selected");
+    if (!selected) return "attack";
 
-    if (choice === "Guard") return "guard";
-    if (choice === "Flee") return "flee";
+    if (selected.dataset.action === "guard") return "guard";
+    if (selected.dataset.action === "flee") return "flee";
     return "attack";
 }
 
@@ -497,7 +501,7 @@ function endBattle({ victory = false, escaped = false, bossDefeated = false } = 
     drawMap();
 }
 
-function resolveBattleAction(action) {
+function resolveBattleAction(action, moveNameOverride = null) {
     if (!battleState.active || !battleState.enemy) return;
 
     const current = getCurrentBattleActor();
@@ -505,12 +509,13 @@ function resolveBattleAction(action) {
 
     const actor = partyData[current.id];
     const enemy = battleState.enemy;
-    const moveName = document.getElementById("battle-ability-select")?.value || "Basic Attack";
+    const moveName = moveNameOverride || document.querySelector(".act-option.selected")?.dataset.move || "Basic Attack";
     const selectedAction = action === "attack" ? resolveSelectedCombatAction() : action;
+    const actualAction = moveNameOverride ? (action || "attack") : selectedAction;
     const move = getWeaponMove(actor, moveName);
     const chantInput = document.getElementById("chant-input")?.value || "";
 
-    if (selectedAction === "magic") {
+    if (actualAction === "magic") {
         if (!hasMagicFocus(actor)) {
             battleState.log = `${actor.name} needs a magic focus to chant.`;
             updateCombatUI();
@@ -538,10 +543,10 @@ function resolveBattleAction(action) {
         const chantField = document.getElementById("chant-input");
         if (chantField) chantField.value = "";
         battleState.log = `${actor.name} chants "${knownSpell.chant}" and casts ${knownSpell.name} for ${spellDamage} damage.`;
-    } else if (selectedAction === "guard") {
+    } else if (actualAction === "guard") {
         battleState.playerGuard = true;
         battleState.log = `${actor.name} braces for impact.`;
-    } else if (selectedAction === "flee") {
+    } else if (actualAction === "flee") {
         if (Math.random() < 0.6) {
             endBattle({ escaped: true });
             return;
@@ -804,13 +809,15 @@ function openActMenu() {
     menu.hidden = !menu.hidden;
 }
 
-function chooseActMove(moveName) {
-    const select = document.getElementById("battle-ability-select");
-    if (!select) return;
-    select.value = moveName;
+function chooseActMove(button) {
     const menu = document.getElementById("act-menu");
-    if (menu) menu.hidden = true;
-    resolveBattleAction("attack");
+    if (!menu || !button) return;
+
+    document.querySelectorAll(".act-option").forEach((option) => option.classList.toggle("selected", option === button));
+    menu.hidden = true;
+    const action = button.dataset.action || "attack";
+    const moveName = button.dataset.move || "Basic Attack";
+    resolveBattleAction(action, moveName);
 }
 
 document.querySelectorAll(".battle-action").forEach(button => {
@@ -820,7 +827,7 @@ document.querySelectorAll(".battle-action").forEach(button => {
 document.getElementById("act-button")?.addEventListener("click", openActMenu);
 
 document.querySelectorAll(".act-option").forEach((button) => {
-    button.addEventListener("click", () => chooseActMove(button.dataset.move));
+    button.addEventListener("click", () => chooseActMove(button));
 });
 
 document.getElementById("chant-input")?.addEventListener("keydown", (event) => {
