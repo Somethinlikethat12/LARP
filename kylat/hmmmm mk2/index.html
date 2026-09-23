@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JRPG Core Engine</title>
+    <link rel="stylesheet" href="stylesheet.css">
+</head>
+<body>
+
+    <!-- Instruction Help Banner -->
+    <div class="keyboard-guide">
+        Press <kbd>M</kbd> Map | <kbd>I</kbd> Inventory | <kbd>C</kbd> Party Screen <br>
+        Move with <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or <kbd>Arrows</kbd>
+    </div>
+
+    <!-- NEW: EXPLORATION MAP VIEW (Toggled via 'M' or active on launch) -->
+    <div id="window-map" class="menu-window">
+        <div class="canvas-container">
+            <canvas id="gameCanvas" width="640" height="480"></canvas>
+            <div id="map-dialogue" class="dialogue-box" style="display: none;"></div>
+        </div>
+    </div>
+
+    <!-- MAIN INVENTORY WINDOW (Toggled via 'I') -->
+    <div id="window-inventory" class="menu-window" style="display: none;">
+        <div class="menu-sidebar"> 
+            <img class="but active" src="img/button.png" role="button" id="one" style="top: 0px;">
+            <img class="but" src="img/button.png" role="button" id="two" style="top: 40px;">
+            <img class="but" src="img/button.png" role="button" id="three" style="top: 80px;">
+            <img class="but" src="img/button.png" role="button" id="four" style="top: 120px;">
+        </div>
+        <div class="section">
+            <h2 id="menu-title" class="theader">WEAPONS</h2>
+            <table>
+                <thead>
+                    <tr><th>Item</th><th>Effect</th><th>Qty</th></tr>
+                </thead>
+                <tbody id="inventory-rows">
+                    <tr data-category="one" data-type="weapon" data-qty="1"><td>Buster Sword</td><td>Main Hand (+15 ATK)</td><td class="qty-display">x1</td></tr>
+                    <tr data-category="one" data-type="armor" data-qty="1"><td>Iron Helmet</td><td>Head (+8 DEF)</td><td class="qty-display">x1</td></tr>
+                    <tr data-category="two" data-type="focus" data-qty="5"><td>Fireball Scroll</td><td>Deals 40 Magic Damage</td><td class="qty-display">x5</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- MAIN CHARACTER MENU SCREEN (Toggled via 'C') -->
+    <div id="window-character" class="menu-window" style="display: none;">
+        <div class="menu-sidebar" id="party-tabs">
+            <button class="char-tab active" data-char="cloud">Cloud</button>
+            <button class="char-tab" data-char="aerith">Aerith</button>
+        </div>
+        <div class="section layout-split">
+            <div class="char-vitals-box">
+                <h2 id="char-display-name" class="theader">CLOUD</h2>
+                <ul class="stats-list">
+                    <li><span>ATK</span><span id="stat-atk">84</span></li>
+                    <li><span>DEF</span><span id="stat-def">62</span></li>
+                </ul>
+            </div>
+            <div class="equipment-grid-panel">
+                <h3 class="theader">EQUIPMENT</h3>
+                <div class="eq-slots-container">
+                    <div class="eq-slot" data-slot="helmet"><span class="slot-lbl">HELMET:</span> <span class="slot-val">Empty</span></div>
+                    <div class="eq-slot" data-slot="chest"><span class="slot-lbl">CHEST:</span> <span class="slot-val">Empty</span></div>
+                    <div class="eq-slot" data-slot="arms"><span class="slot-lbl">ARMS:</span> <span class="slot-val">Empty</span></div>
+                    <div class="eq-slot" data-slot="leggings"><span class="slot-lbl">LEGGINGS:</span> <span class="slot-val">Empty</span></div>
+                    <div class="eq-slot" data-slot="boots"><span class="slot-lbl">BOOTS:</span> <span class="slot-val">Empty</span></div>
+                    <div class="eq-slot" data-slot="amulet"><span class="slot-lbl">AMULET:</span> <span class="slot-val">Empty</span></div>
+                    <div class="eq-slot" data-slot="ring"><span class="slot-lbl">RING:</span> <span class="slot-val">Empty</span></div>
+                    <div class="eq-slot" data-slot="weapon"><span class="slot-lbl">MAIN WPN:</span> <span class="slot-val">Empty</span></div>
+                    <div class="eq-slot" data-slot="focus"><span class="slot-lbl">M. FOCUS:</span> <span class="slot-val">Empty</span></div>
+                    <div class="eq-slot" data-slot="ammo"><span class="slot-lbl">AMMO:</span> <span class="slot-val">Empty</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- DYNAMIC JRPG PORTAL POP-UP -->
+    <div id="confirm-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-box">
+            <p id="modal-text">Equip Item?</p>
+            <div id="modal-target-options" class="modal-buttons"></div>
+            <button id="btn-cancel" style="margin-top:15px; background:none; border:1px solid #555; color:#fff; cursor:pointer;">CANCEL</button>
+        </div>
+    </div>
+
+    <script src="game.js"></script>
+</body>
+</html>
