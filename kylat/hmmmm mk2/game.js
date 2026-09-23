@@ -102,6 +102,8 @@ function updateCombatUI() {
 }
 
 function startBattle(enemyName = null, enemyType = "wild") {
+    if (battleState.active) return;
+
     const enemyTemplate = enemyTemplates.find((enemy) => enemy.name === enemyName) || enemyTemplates[Math.floor(Math.random() * (enemyTemplates.length - 1))];
     const enemy = {
         name: enemyName || enemyTemplate.name,
@@ -124,6 +126,7 @@ function startBattle(enemyName = null, enemyType = "wild") {
     gameMode = "combat";
     updateCombatUI();
 }
+
 
 function resolveEnemyTurn() {
     const current = getCurrentPartyMember();
@@ -321,16 +324,25 @@ window.addEventListener("keydown", (e) => {
     const mapWin = document.getElementById("window-map");
     const invWin = document.getElementById("window-inventory");
     const charWin = document.getElementById("window-character");
+    const combatScreen = document.getElementById("combat-screen");
 
     const key = e.key.toLowerCase();
 
-    // Close Dialogue boxes on active confirmation presses
     if (gameMode === "dialogue") {
         if (key === "enter" || key === " " || key === "e") closeDialogue();
         return;
     }
 
-    // Tab Navigation toggles
+    if (gameMode === "combat") {
+        if (key === "m") {
+            gameMode = "map";
+            combatScreen.style.display = "none";
+            mapWin.style.display = "flex";
+            drawMap();
+        }
+        return;
+    }
+
     if (key === "m") {
         gameMode = "map"; mapWin.style.display = "flex"; invWin.style.display = "none"; charWin.style.display = "none";
         drawMap();
@@ -343,7 +355,6 @@ window.addEventListener("keydown", (e) => {
         drawCharacterUI();
     }
 
-    // Directional control routing hooks
     if (key === "w" || e.key === "ArrowUp")    movePlayer(0, -1);
     if (key === "s" || e.key === "ArrowDown")  movePlayer(0, 1);
     if (key === "a" || e.key === "ArrowLeft")  movePlayer(-1, 0);
