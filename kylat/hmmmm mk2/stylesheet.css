@@ -76,12 +76,16 @@ tr:hover td { background-color: rgb(25, 6, 6); }
 
 .combat-screen {
     position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
-    background: rgba(8, 2, 2, 0.82); z-index: 1500;
+    background: rgba(8, 2, 2, 0.82); z-index: 1500; opacity: 0; pointer-events: none; transition: opacity 0.22s ease;
+}
+.combat-screen.show {
+    opacity: 1; pointer-events: auto;
 }
 .combat-panel {
     width: min(760px, 88vw); background: rgba(25, 6, 6, 0.96); border: 3px solid rgb(200, 50, 50);
-    box-shadow: 0 0 25px rgba(0,0,0,0.7); padding: 26px; color: #fff;
+    box-shadow: 0 0 25px rgba(0,0,0,0.7); padding: 26px; color: #fff; transform: translateY(12px) scale(0.98); transition: transform 0.22s ease;
 }
+.combat-screen.show .combat-panel { transform: translateY(0) scale(1); }
 .combat-header {
     display: flex; justify-content: space-between; align-items: center; gap: 16px; border-bottom: 2px solid rgba(200, 50, 50, 0.5); padding-bottom: 10px; margin-bottom: 18px;
 }
@@ -92,6 +96,7 @@ tr:hover td { background-color: rgb(25, 6, 6); }
     color: #ffe5a3; font-size: 11px; letter-spacing: 1.5px; text-decoration: none; border: 1px solid rgba(255, 200, 80, 0.7); padding: 5px 8px;
 }
 .grimoire-link:hover { background: rgba(255, 200, 80, 0.12); }
+.battle-turn-banner { margin-bottom: 12px; color: #ffdca8; letter-spacing: 1.5px; font-size: 12px; text-transform: uppercase; }
 .combat-battlefield {
     display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin-bottom: 18px;
 }
@@ -109,6 +114,13 @@ tr:hover td { background-color: rgb(25, 6, 6); }
 }
 .enemy-fill { background: linear-gradient(90deg, #ff5f5f, #ffb07e); }
 .hp-text { margin-top: 8px; font-size: 13px; color: #eee; }
+.turn-list { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+.turn-card {
+    background: rgba(255,255,255,0.03); border: 1px solid rgba(200, 50, 50, 0.35); padding: 8px 10px; font-size: 12px;
+}
+.turn-card.active-turn { border-color: #ffdca8; box-shadow: 0 0 10px rgba(255, 220, 168, 0.25); }
+.turn-name { font-weight: bold; }
+.turn-meta { color: #d0caca; }
 .combat-actions {
     display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 18px;
 }
