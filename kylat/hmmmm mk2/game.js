@@ -1,10 +1,25 @@
 // === EXISTING CHARACTER/INVENTORY DATA PRESETS ===
 const partyData = {
-    cloud: { name: "CLOUD", class: "melee", atk: 84, def: 62, maxHp: 150, hp: 150, equipment: { helmet: "Empty", chest: "Empty", arms: "Empty", leggings: "Empty", boots: "Empty", amulet: "Empty", ring: "Empty", weapon: "Empty", focus: "N/A", ammo: "N/A" }},
-    aerith: { name: "AERITH", class: "magic", atk: 32, def: 45, maxHp: 120, hp: 120, equipment: { helmet: "Empty", chest: "Empty", arms: "Empty", leggings: "Empty", boots: "Empty", amulet: "Empty", ring: "Empty", weapon: "N/A", focus: "Empty", ammo: "N/A" }}
+    cloud: { name: "CLOUD", class: "melee", atk: 84, def: 62, maxHp: 150, hp: 150, equipment: { helmet: "Empty", chest: "Empty", arms: "Empty", leggings: "Empty", boots: "Empty", amulet: "Empty", ring: "Empty", weapon: "Buster Sword", focus: "N/A", ammo: "N/A" }},
+    aerith: { name: "AERITH", class: "magic", atk: 32, def: 45, maxHp: 120, hp: 120, equipment: { helmet: "Empty", chest: "Empty", arms: "Empty", leggings: "Empty", boots: "Empty", amulet: "Empty", ring: "Empty", weapon: "N/A", focus: "Fireball Scroll", ammo: "N/A" }}
 };
 const tabConfigs = { one: "WEAPONS", two: "SCROLLS", three: "ARMOR", four: "KEY ITEMS" };
 let currentCharacterId = "cloud", selectedInventoryRow = null;
+
+const weaponAbilities = {
+    "Buster Sword": { name: "Meteor Cleave", min: 18, max: 30, text: "Channels a heavy downward slash that tears through armor." },
+    "Iron Helmet": { name: "Headbutt", min: 10, max: 16, text: "A desperate bash using the metal headpiece as a blunt weapon." },
+    "Fists": { name: "Knuckle Burst", min: 8, max: 14, text: "A fast close-range strike with bodyweight behind it." },
+    "Default": { name: "Basic Strike", min: 8, max: 18, text: "A reliable physical hit with no special effect." }
+};
+
+const spellbook = {
+    "Fireball Scroll": { name: "Fireball", min: 18, max: 32, text: "Burns the target with a focused blast of flame." },
+    "Arcane Sigil": { name: "Arc Lash", min: 14, max: 24, text: "Crackles with lightning-sealed energy." },
+    "Default": { name: "Spark", min: 12, max: 22, text: "A basic elemental burst." }
+};
+
+const GRIMOIRE_PATH = "grimoire.md";
 
 // === NEW: MAP RENDERING VARIABLES ===
 const canvas = document.getElementById("gameCanvas");
@@ -42,6 +57,27 @@ function randomBetween(min, max) {
 
 function getCurrentPartyMember() {
     return partyData[currentCharacterId];
+}
+
+function getEquippedWeapon(actor) {
+    if (!actor || !actor.equipment) return "Fists";
+    return actor.equipment.weapon && actor.equipment.weapon !== "N/A" && actor.equipment.weapon !== "Empty" ? actor.equipment.weapon : "Fists";
+}
+
+function getEquippedFocus(actor) {
+    if (!actor || !actor.equipment) return "Default";
+    return actor.equipment.focus && actor.equipment.focus !== "N/A" && actor.equipment.focus !== "Empty" ? actor.equipment.focus : "Default";
+}
+
+function getWeaponAbility(actor) {
+    const weaponName = getEquippedWeapon(actor);
+    const ability = weaponAbilities[weaponName] || weaponAbilities.Default;
+    return ability;
+}
+
+function getSpellAbility(actor) {
+    const spellName = getEquippedFocus(actor);
+    return spellbook[spellName] || spellbook.Default;
 }
 
 function updateCombatUI() {
@@ -123,23 +159,19 @@ function resolveBattleAction(action) {
 
     const current = getCurrentPartyMember();
     const enemy = battleState.enemy;
+    const weapon = getWeaponAbility(current);
+    const spell = getSpellAbility(current);
 
     if (action === "attack") {
-        const damage = randomBetween(12, 24) + Math.floor(current.atk / 8);
+        const damage = randomBetween(weapon.min, weapon.max) + Math.floor(current.atk / 10);
         enemy.hp = Math.max(0, enemy.hp - damage);
-        battleState.log = `${current.name} attacks for ${damage} damage.`;
+        battleState.log = `${current.name} uses ${weapon.name} for ${damage} damage. ${weapon.text}`;
     }
 
     if (action === "magic") {
-        if (current.class === "magic") {
-            const damage = randomBetween(14, 30) + Math.floor(current.atk / 6);
-            enemy.hp = Math.max(0, enemy.hp - damage);
-            battleState.log = `${current.name} casts a spell for ${damage} damage.`;
-        } else {
-            const damage = randomBetween(8, 16) + Math.floor(current.atk / 10);
-            enemy.hp = Math.max(0, enemy.hp - damage);
-            battleState.log = `${current.name} uses a desperate melee burst for ${damage} damage.`;
-        }
+        const spellDamage = randomBetween(spell.min, spell.max) + Math.floor(current.atk / 8);
+        enemy.hp = Math.max(0, enemy.hp - spellDamage);
+        battleState.log = `${current.name} casts ${spell.name} for ${spellDamage} damage. ${spell.text}`;
     }
 
     if (action === "guard") {
