@@ -810,8 +810,15 @@ document.getElementById("btn-cancel").addEventListener("click", () => {
 
 function openActMenu() {
     const menu = document.getElementById("window-act");
+    const inventory = document.getElementById("window-inventory");
+    const character = document.getElementById("window-character");
+
+    if (inventory) inventory.style.display = "none";
+    if (character) character.style.display = "none";
     if (!menu) return;
+
     menu.style.display = "flex";
+    menu.style.zIndex = "2000";
     populateActMenu();
 }
 

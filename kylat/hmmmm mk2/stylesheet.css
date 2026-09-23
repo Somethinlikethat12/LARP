@@ -20,9 +20,10 @@ table, th, td, h2, h3, button, div, span, p, kbd {
 kbd { background: #444; border-radius:3px; padding:1px 4px; color:#fff; margin: 0 2px;}
 
 .menu-window {
-    position: absolute; top: 0; left: 0;
+    position: fixed; inset: 0;
     width: 100vw; height: 100vh;
     display: flex; background: rgb(17, 3, 3);
+    z-index: 1800;
 }
 
 /* Map Screen Layout Center Alignment */
@@ -77,6 +78,10 @@ tr:hover td { background-color: rgb(25, 6, 6); }
 .combat-screen {
     position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
     background: rgba(8, 2, 2, 0.82); z-index: 1500; opacity: 0; pointer-events: none; transition: opacity 0.22s ease;
+}
+
+#window-act {
+    z-index: 2000;
 }
 .combat-screen.show {
     opacity: 1; pointer-events: auto;
