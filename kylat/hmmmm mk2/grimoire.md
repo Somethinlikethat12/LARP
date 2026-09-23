@@ -1,0 +1,1 @@
+Fireball - 500 magic damage - applies burning to the target: the target takes 10 damage at the start of their next turn and has halved offensive stats that turn.  chant: "Heed me, oh flame." requirements: character read "Book of Flames"

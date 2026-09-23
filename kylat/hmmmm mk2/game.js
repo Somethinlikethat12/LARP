@@ -1,7 +1,7 @@
 // === EXISTING CHARACTER/INVENTORY DATA PRESETS ===
 const partyData = {
-    cloud: { name: "CLOUD", class: "melee", atk: 84, def: 62, speed: 95, maxHp: 150, hp: 150, equipment: { helmet: "Empty", chest: "Empty", arms: "Empty", leggings: "Empty", boots: "Empty", amulet: "Empty", ring: "Empty", weapon: "Buster Sword", focus: "N/A", ammo: "N/A" }},
-    aerith: { name: "AERITH", class: "magic", atk: 32, def: 45, speed: 88, maxHp: 120, hp: 120, equipment: { helmet: "Empty", chest: "Empty", arms: "Empty", leggings: "Empty", boots: "Empty", amulet: "Empty", ring: "Empty", weapon: "N/A", focus: "Fireball Scroll", ammo: "N/A" }}
+    cloud: { name: "CLOUD", class: "melee", atk: 84, def: 62, magic: 3, magicDef: 2, speed: 95, maxHp: 150, hp: 150, equipment: { helmet: "Empty", chest: "Empty", arms: "Empty", leggings: "Empty", boots: "Empty", amulet: "Empty", ring: "Empty", weapon: "Buster Sword", focus: "N/A", ammo: "N/A" }, grimoire: ["Fireball"], chantKnowledge: new Set(["Heed me, oh flame."]) },
+    aerith: { name: "AERITH", class: "magic", atk: 32, def: 45, magic: 4, magicDef: 3, speed: 88, maxHp: 120, hp: 120, equipment: { helmet: "Empty", chest: "Empty", arms: "Empty", leggings: "Empty", boots: "Empty", amulet: "Empty", ring: "Empty", weapon: "N/A", focus: "Fireball Scroll", ammo: "N/A" }, grimoire: ["Fireball"], chantKnowledge: new Set(["Heed me, oh flame."]) }
 };
 const tabConfigs = { one: "WEAPONS", two: "SCROLLS", three: "ARMOR", four: "KEY ITEMS" };
 let currentCharacterId = "cloud", selectedInventoryRow = null;
@@ -46,9 +46,16 @@ const weaponAbilities = {
 };
 
 const spellbook = {
-    "Fireball Scroll": { name: "Fireball", min: 18, max: 32, text: "Burns the target with a focused blast of flame." },
-    "Arcane Sigil": { name: "Arc Lash", min: 14, max: 24, text: "Crackles with lightning-sealed energy." },
-    "Default": { name: "Spark", min: 12, max: 22, text: "A basic elemental burst." }
+    Fireball: { name: "Fireball", baseDamage: 500, chant: "Heed me, oh flame.", text: "Burns the target with a focused blast of flame.", requirement: "Book of Flames" },
+    Frostbite: { name: "Frostbite", baseDamage: 420, chant: "By the frozen breath of winter.", text: "Freezes the battlefield and slows the target.", requirement: "Frostbound Ledger" },
+    ArcaneSigil: { name: "Arc Lash", baseDamage: 360, chant: "Lightning answer my call.", text: "Crackles with lightning-sealed energy.", requirement: "Arcane Sigil Ledger" },
+    Default: { name: "Spark", baseDamage: 140, chant: "light", text: "A basic elemental burst.", requirement: "None" }
+};
+
+const spellDiscovery = {
+    "Book of Flames": ["Fireball"],
+    "Frostbound Ledger": ["Frostbite"],
+    "Arcane Sigil Ledger": ["ArcaneSigil"]
 };
 
 const GRIMOIRE_PATH = "grimoire.md";
@@ -80,10 +87,10 @@ const battleState = {
 };
 
 const enemyTemplates = [
-    { name: "MAD SLIME", type: "wild", hp: 44, atk: 10 },
-    { name: "BLOOD WOLF", type: "wild", hp: 58, atk: 13 },
-    { name: "MAGE THORN", type: "wild", hp: 64, atk: 18 },
-    { name: "SEPHIROTH", type: "boss", hp: 110, atk: 24 }
+    { name: "MAD SLIME", type: "wild", hp: 44, atk: 10, def: 18, magicDef: 8, magic: 1 },
+    { name: "BLOOD WOLF", type: "wild", hp: 58, atk: 13, def: 20, magicDef: 9, magic: 2 },
+    { name: "MAGE THORN", type: "wild", hp: 64, atk: 18, def: 24, magicDef: 12, magic: 3 },
+    { name: "SEPHIROTH", type: "boss", hp: 110, atk: 24, def: 150, magicDef: 18, magic: 5 }
 ];
 
 function randomBetween(min, max) {
@@ -119,6 +126,51 @@ function getWeaponAbility(actor) {
 function getSpellAbility(actor) {
     const spellName = getEquippedFocus(actor);
     return spellbook[spellName] || spellbook.Default;
+}
+
+function normaliseChant(chant) {
+    return String(chant || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function getSpellForChant(actor, chantText) {
+    const input = normaliseChant(chantText);
+    if (!input) return null;
+
+    const available = Array.from(actor?.grimoire || []);
+    for (const spellName of available) {
+        const spell = spellbook[spellName];
+        if (spell && normaliseChant(spell.chant) === input) {
+            return spell;
+        }
+    }
+
+    for (const [spellName, spell] of Object.entries(spellbook)) {
+        if (spell && normaliseChant(spell.chant) === input && actor?.chantKnowledge?.has(spell.chant.trim())) {
+            return spell;
+        }
+    }
+
+    return null;
+}
+
+function getVisibleMagicValue(actor) {
+    const magicValue = Number(actor?.magic || 0);
+    return magicValue * 10;
+}
+
+function learnSpellFromBook(actor, bookTitle) {
+    if (!actor || !spellDiscovery[bookTitle]) return false;
+    let learned = false;
+    spellDiscovery[bookTitle].forEach((spellName) => {
+        if (!actor.grimoire.includes(spellName)) {
+            actor.grimoire.push(spellName);
+            learned = true;
+        }
+        if (spellbook[spellName]?.chant) {
+            actor.chantKnowledge.add(spellbook[spellName].chant.trim());
+        }
+    });
+    return learned;
 }
 
 function getWeaponMove(actor) {
@@ -227,7 +279,8 @@ function startBattle(enemyName = null, enemyType = "wild") {
         maxHp: enemyName === "SEPHIROTH" || enemyType === "boss" ? 110 : enemyTemplate.hp,
         hp: enemyName === "SEPHIROTH" || enemyType === "boss" ? 110 : enemyTemplate.hp,
         atk: enemyName === "SEPHIROTH" || enemyType === "boss" ? 24 : enemyTemplate.atk,
-        def: enemyName === "SEPHIROTH" || enemyType === "boss" ? 150 : 40,
+        def: enemyName === "SEPHIROTH" || enemyType === "boss" ? 150 : (enemyTemplate.def || 40),
+        magicDef: enemyName === "SEPHIROTH" || enemyType === "boss" ? 18 : (enemyTemplate.magicDef || 10),
         speed: enemyName === "SEPHIROTH" || enemyType === "boss" ? 96 : 80,
         isBoss: enemyType === "boss" || enemyName === "SEPHIROTH"
     };
@@ -301,9 +354,19 @@ function resolveBattleAction(action) {
     }
 
     if (action === "magic") {
-        const spellDamage = Math.max(0, Math.round((spell.min + spell.max) / 2) + Math.floor(current.atk / 8));
+        const chantInput = document.getElementById("chant-input")?.value || "";
+        const knownSpell = getSpellForChant(current, chantInput);
+
+        if (!knownSpell) {
+            battleState.log = `${current.name} chants "${chantInput || "(empty)"}" but the phrase is unfamiliar.`;
+            return;
+        }
+
+        const realMagic = Number(current.magic || 1);
+        const spellDamage = Math.max(0, Math.round((knownSpell.baseDamage || 120) * realMagic - (enemy.magicDef || 0) * 2));
         enemy.hp = Math.max(0, enemy.hp - spellDamage);
-        battleState.log = `${current.name} casts ${spell.name} for ${spellDamage} damage. ${spell.text}`;
+        document.getElementById("chant-input").value = "";
+        battleState.log = `${current.name} chants "${knownSpell.chant}" and casts ${knownSpell.name} for ${spellDamage} damage.`;
     }
 
     if (action === "guard") {
@@ -352,6 +415,7 @@ function resolveBattleAction(action) {
         advanceCombatTurn();
     }
 }
+
 
 // World Matrix Map Array Setup
 // 0 = Walkable, 1 = Solid Wall, 2 = Random Encounter Tall Grass, 3 = Boss Block Area
@@ -518,6 +582,7 @@ function drawCharacterUI() {
     document.getElementById("char-display-name").textContent = char.name;
     document.getElementById("stat-atk").textContent = char.atk;
     document.getElementById("stat-def").textContent = char.def;
+    document.getElementById("stat-magic").textContent = String(getVisibleMagicValue(char));
     document.querySelectorAll(".eq-slot").forEach(slotEl => {
         const slotType = slotEl.getAttribute("data-slot");
         const eqValue = char.equipment[slotType];
