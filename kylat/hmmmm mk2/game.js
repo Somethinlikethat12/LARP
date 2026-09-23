@@ -215,8 +215,27 @@ function getWeaponMove(actor, moveName = null) {
 }
 
 function getAbilityOptions(actor) {
-    const weapon = getWeaponAbility(actor);
-    return weapon.moves && weapon.moves.length ? weapon.moves : [{ name: "Basic Strike", skillDamage: weapon.skillDamage || 2, text: "A basic blow." }];
+    const baseMoves = getWeaponAbility(actor).moves && getWeaponAbility(actor).moves.length ? getWeaponAbility(actor).moves : [{ name: "Basic Strike", skillDamage: getWeaponAbility(actor).skillDamage || 2, text: "A basic blow." }];
+    return [
+        ...baseMoves,
+        { name: "Guard", skillDamage: 0, text: "Brace for the next hit." },
+        { name: "Flee", skillDamage: 0, text: "Attempt a retreat." }
+    ];
+}
+
+function getScaledEnemyHp(template) {
+    const baseHp = template.hp || 30;
+    const partyPower = Object.values(partyData).reduce((highest, member) => {
+        const weaponPower = (member.atk || 0) + (getWeaponAbility(member).atkBonus || 0) + (getWeaponAbility(member).skillDamage || 2) * 20;
+        const spellPower = (spellbook.Fireball?.baseDamage || 120) * (member.magic || 1);
+        return Math.max(highest, weaponPower, spellPower);
+    }, 0);
+
+    const scaledHp = Math.ceil(Math.max(baseHp * 10, baseHp + partyPower * 0.45));
+    if (template.type === "boss") {
+        return Math.max(scaledHp, 900);
+    }
+    return scaledHp;
 }
 
 function calculateWeaponDamage(actor, enemy, move) {
@@ -260,13 +279,23 @@ function refreshAbilitySelect() {
     const current = getCurrentBattleActor();
     if (!current || current.side !== "party") {
         select.disabled = true;
-        select.innerHTML = '<option value="basic">Attack</option>';
+        select.innerHTML = '<option value="Basic Strike">Basic Strike</option>';
         return;
     }
 
     const options = getAbilityOptions(current);
     select.disabled = false;
-    select.innerHTML = options.map((move, index) => `<option value="${move.name}" ${index === 0 ? "selected" : ""}>${move.name}</option>`).join("");
+    const currentValue = select.value || options[0].name;
+    select.innerHTML = options.map((move) => `<option value="${move.name}" ${move.name === currentValue ? "selected" : ""}>${move.name}</option>`).join("");
+}
+
+function resolveSelectedCombatAction() {
+    const select = document.getElementById("battle-ability-select");
+    const choice = select?.value || "Basic Strike";
+
+    if (choice === "Guard") return "guard";
+    if (choice === "Flee") return "flee";
+    return "attack";
 }
 
 function refreshChantInput() {
@@ -379,11 +408,12 @@ function startBattle(enemyName = null, enemyType = "wild") {
     resetBattleState();
 
     const enemyTemplate = enemyTemplates.find((enemy) => enemy.name === enemyName) || enemyTemplates[Math.floor(Math.random() * (enemyTemplates.length - 1))];
+    const scaledHp = getScaledEnemyHp(enemyTemplate);
     const enemy = {
         name: enemyName || enemyTemplate.name,
         type: enemyType === "boss" ? "boss" : enemyTemplate.type,
-        maxHp: enemyName === "SEPHIROTH" || enemyType === "boss" ? 110 : enemyTemplate.hp,
-        hp: enemyName === "SEPHIROTH" || enemyType === "boss" ? 110 : enemyTemplate.hp,
+        maxHp: enemyName === "SEPHIROTH" || enemyType === "boss" ? Math.max(scaledHp, 900) : scaledHp,
+        hp: enemyName === "SEPHIROTH" || enemyType === "boss" ? Math.max(scaledHp, 900) : scaledHp,
         atk: enemyName === "SEPHIROTH" || enemyType === "boss" ? 24 : enemyTemplate.atk,
         def: enemyName === "SEPHIROTH" || enemyType === "boss" ? 150 : (enemyTemplate.def || 40),
         magicDef: enemyName === "SEPHIROTH" || enemyType === "boss" ? 18 : (enemyTemplate.magicDef || 10),
@@ -442,6 +472,30 @@ function resolveEnemyTurn() {
     }
 }
 
+function endBattle({ victory = false, escaped = false, bossDefeated = false } = {}) {
+    battleState.active = false;
+    battleState.enemy = null;
+    battleState.turnOrder = [];
+    battleState.currentActorId = null;
+    battleState.playerGuard = false;
+
+    if (victory) {
+        battleState.log = bossDefeated ? "Boss defeated! The arena is yours." : "Victory! The encounter is over.";
+    } else if (escaped) {
+        battleState.log = "The party escapes the encounter.";
+    } else {
+        battleState.log = "The battle ends.";
+    }
+
+    hideCombatScreen();
+    document.getElementById("window-map").style.display = "flex";
+    gameMode = "map";
+    const chantInput = document.getElementById("chant-input");
+    if (chantInput) chantInput.value = "";
+    updateCombatUI();
+    drawMap();
+}
+
 function resolveBattleAction(action) {
     if (!battleState.active || !battleState.enemy) return;
 
@@ -450,23 +504,12 @@ function resolveBattleAction(action) {
 
     const actor = partyData[current.id];
     const enemy = battleState.enemy;
-    const weapon = getWeaponAbility(actor);
-    const spell = getSpellAbility(actor);
     const moveName = document.getElementById("battle-ability-select")?.value || "Basic Strike";
+    const selectedAction = action === "attack" ? resolveSelectedCombatAction() : action;
     const move = getWeaponMove(actor, moveName);
     const chantInput = document.getElementById("chant-input")?.value || "";
 
-    if (action === "attack" && chantInput.trim() && hasMagicFocus(actor)) {
-        action = "magic";
-    }
-
-    if (action === "attack") {
-        const damage = calculateWeaponDamage(actor, enemy, move);
-        enemy.hp = Math.max(0, enemy.hp - damage);
-        battleState.log = `${actor.name} uses ${move.name} for ${damage} damage. ${move.text}`;
-    }
-
-    if (action === "magic") {
+    if (selectedAction === "magic") {
         if (!hasMagicFocus(actor)) {
             battleState.log = `${actor.name} needs a magic focus to chant.`;
             updateCombatUI();
@@ -491,28 +534,22 @@ function resolveBattleAction(action) {
         const realMagic = Number(actor.magic || 1);
         const spellDamage = Math.max(0, Math.round((knownSpell.baseDamage || 120) * realMagic - (enemy.magicDef || 0) * 2));
         enemy.hp = Math.max(0, enemy.hp - spellDamage);
-        if (document.getElementById("chant-input")) document.getElementById("chant-input").value = "";
+        const chantField = document.getElementById("chant-input");
+        if (chantField) chantField.value = "";
         battleState.log = `${actor.name} chants "${knownSpell.chant}" and casts ${knownSpell.name} for ${spellDamage} damage.`;
-    }
-
-    if (action === "guard") {
+    } else if (selectedAction === "guard") {
         battleState.playerGuard = true;
         battleState.log = `${actor.name} braces for impact.`;
-    }
-
-    if (action === "flee") {
+    } else if (selectedAction === "flee") {
         if (Math.random() < 0.6) {
-            battleState.active = false;
-            battleState.enemy = null;
-            battleState.turnOrder = [];
-            battleState.currentActorId = null;
-            battleState.log = `${actor.name} escapes the encounter.`;
-            hideCombatScreen();
-            document.getElementById("window-map").style.display = "flex";
-            gameMode = "map";
+            endBattle({ escaped: true });
             return;
         }
         battleState.log = `${actor.name} fails to escape!`;
+    } else {
+        const damage = calculateWeaponDamage(actor, enemy, move);
+        enemy.hp = Math.max(0, enemy.hp - damage);
+        battleState.log = `${actor.name} uses ${move.name} for ${damage} damage. ${move.text}`;
     }
 
     updateCombatUI();
@@ -521,17 +558,10 @@ function resolveBattleAction(action) {
         battleState.log = `${enemy.name} is defeated!`;
         if (enemy.isBoss) {
             boss.active = false;
-            battleState.log = `Boss defeated! ${actor.name} takes control of the arena.`;
+            endBattle({ victory: true, bossDefeated: true });
+            return;
         }
-        battleState.active = false;
-        battleState.enemy = null;
-        battleState.turnOrder = [];
-        battleState.currentActorId = null;
-        hideCombatScreen();
-        document.getElementById("window-map").style.display = "flex";
-        gameMode = "map";
-        updateCombatUI();
-        drawMap();
+        endBattle({ victory: true });
         return;
     }
 
