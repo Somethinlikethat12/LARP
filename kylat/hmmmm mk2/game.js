@@ -146,6 +146,11 @@ function getEquippedFocus(actor) {
     return actor.equipment.focus && actor.equipment.focus !== "N/A" && actor.equipment.focus !== "Empty" ? actor.equipment.focus : "Default";
 }
 
+function hasMagicFocus(actor) {
+    const focus = actor?.equipment?.focus;
+    return Boolean(focus && focus !== "N/A" && focus !== "Empty" && focus !== "Default");
+}
+
 function getWeaponAbility(actor) {
     const weaponName = getEquippedWeapon(actor);
     const ability = weaponAbilities[weaponName] || weaponAbilities.Default;
@@ -264,6 +269,17 @@ function refreshAbilitySelect() {
     select.innerHTML = options.map((move, index) => `<option value="${move.name}" ${index === 0 ? "selected" : ""}>${move.name}</option>`).join("");
 }
 
+function refreshChantInput() {
+    const chantInput = document.getElementById("chant-input");
+    if (!chantInput) return;
+
+    const current = getCurrentBattleActor();
+    const canChant = current && current.side === "party" ? hasMagicFocus(partyData[current.id]) : false;
+
+    chantInput.disabled = !canChant;
+    chantInput.placeholder = canChant ? "Type the spell chant here..." : "Requires magic focus";
+}
+
 function updateCombatUI() {
     const combatScreen = document.getElementById("combat-screen");
     if (!combatScreen || !battleState.active || !battleState.enemy) return;
@@ -287,6 +303,7 @@ function updateCombatUI() {
     document.getElementById("enemy-hp-text").textContent = `${enemy.hp} / ${enemy.maxHp} HP`;
 
     refreshAbilitySelect();
+    refreshChantInput();
     renderRosterLists();
 }
 
@@ -346,8 +363,20 @@ function hideCombatScreen() {
     }, 220);
 }
 
+function resetBattleState() {
+    battleState.active = false;
+    battleState.enemy = null;
+    battleState.partyQueue = [];
+    battleState.turnOrder = [];
+    battleState.currentActorId = null;
+    battleState.playerGuard = false;
+    battleState.round = 1;
+    battleState.log = "Choose an action.";
+}
+
 function startBattle(enemyName = null, enemyType = "wild") {
     if (battleState.active) return;
+    resetBattleState();
 
     const enemyTemplate = enemyTemplates.find((enemy) => enemy.name === enemyName) || enemyTemplates[Math.floor(Math.random() * (enemyTemplates.length - 1))];
     const enemy = {
@@ -425,6 +454,11 @@ function resolveBattleAction(action) {
     const spell = getSpellAbility(actor);
     const moveName = document.getElementById("battle-ability-select")?.value || "Basic Strike";
     const move = getWeaponMove(actor, moveName);
+    const chantInput = document.getElementById("chant-input")?.value || "";
+
+    if (action === "attack" && chantInput.trim() && hasMagicFocus(actor)) {
+        action = "magic";
+    }
 
     if (action === "attack") {
         const damage = calculateWeaponDamage(actor, enemy, move);
@@ -433,11 +467,24 @@ function resolveBattleAction(action) {
     }
 
     if (action === "magic") {
-        const chantInput = document.getElementById("chant-input")?.value || "";
-        const knownSpell = getSpellForChant(actor, chantInput);
+        if (!hasMagicFocus(actor)) {
+            battleState.log = `${actor.name} needs a magic focus to chant.`;
+            updateCombatUI();
+            return;
+        }
 
+        if (!chantInput.trim()) {
+            battleState.log = `${actor.name} tries to chant, but the phrase is empty.`;
+            updateCombatUI();
+            if (battleState.active) advanceCombatTurn();
+            return;
+        }
+
+        const knownSpell = getSpellForChant(actor, chantInput);
         if (!knownSpell) {
-            battleState.log = `${actor.name} chants "${chantInput || "(empty)"}" but the phrase is unfamiliar.`;
+            battleState.log = `${actor.name} chants "${chantInput}" but the phrase is unfamiliar.`;
+            updateCombatUI();
+            if (battleState.active) advanceCombatTurn();
             return;
         }
 
@@ -457,6 +504,8 @@ function resolveBattleAction(action) {
         if (Math.random() < 0.6) {
             battleState.active = false;
             battleState.enemy = null;
+            battleState.turnOrder = [];
+            battleState.currentActorId = null;
             battleState.log = `${actor.name} escapes the encounter.`;
             hideCombatScreen();
             document.getElementById("window-map").style.display = "flex";
@@ -476,6 +525,8 @@ function resolveBattleAction(action) {
         }
         battleState.active = false;
         battleState.enemy = null;
+        battleState.turnOrder = [];
+        battleState.currentActorId = null;
         hideCombatScreen();
         document.getElementById("window-map").style.display = "flex";
         gameMode = "map";
@@ -718,6 +769,16 @@ document.getElementById("btn-cancel").addEventListener("click", () => {
 
 document.querySelectorAll(".battle-action").forEach(button => {
     button.addEventListener("click", () => resolveBattleAction(button.dataset.action));
+});
+
+document.getElementById("chant-input")?.addEventListener("keydown", (event) => {
+    const activeBattleActor = getCurrentBattleActor();
+    const isActivePartyMage = activeBattleActor && activeBattleActor.side === "party" && hasMagicFocus(partyData[activeBattleActor.id]);
+
+    if (event.key === "Enter" && isActivePartyMage) {
+        event.preventDefault();
+        resolveBattleAction("magic");
+    }
 });
 
 filterMenu("one");
