@@ -68,9 +68,17 @@
                 <button class="battle-action" data-action="flee">FLEE</button>
             </div>
 
-            <div class="chant-cast-box">
-                <label for="chant-input">CHANT</label>
-                <input id="chant-input" type="text" maxlength="120" placeholder="Type the spell chant here..." />
+            <div class="combat-utility-row">
+                <div class="ability-select-wrap">
+                    <label for="battle-ability-select">ABILITY</label>
+                    <select id="battle-ability-select">
+                        <option value="Basic Strike">Basic Strike</option>
+                    </select>
+                </div>
+                <div class="chant-cast-box">
+                    <label for="chant-input">CHANT</label>
+                    <input id="chant-input" type="text" maxlength="120" placeholder="Type the spell chant here..." />
+                </div>
             </div>
 
             <div id="battle-log" class="battle-log">Choose an action.</div>

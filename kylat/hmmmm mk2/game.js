@@ -76,10 +76,14 @@ let player = { x: 2, y: 2 }; // Grid tile coordinates
 // Interactive Boss NPC Setting
 let boss = { x: 18, y: 12, active: true };
 
+const BATTLE_PARTY_CAP = 5;
+const PARTY_SOFT_CAP = 5;
+
 const battleState = {
     active: false,
     enemy: null,
     partyQueue: [],
+    turnOrder: [],
     currentActorId: null,
     playerGuard: false,
     round: 1,
@@ -102,9 +106,34 @@ function getCurrentPartyMember() {
 }
 
 function getLivingPartyMembers() {
-    return Object.entries(partyData)
+    const living = Object.entries(partyData)
         .filter(([, member]) => member.hp > 0)
         .map(([id, member]) => ({ id, ...member }));
+
+    return living.slice(0, PARTY_SOFT_CAP);
+}
+
+function getCurrentBattleActor() {
+    if (!battleState.turnOrder.length) return null;
+    return battleState.turnOrder.find((entity) => entity.battleId === battleState.currentActorId) || battleState.turnOrder[0];
+}
+
+function getBattleTurnOrder() {
+    const party = getLivingPartyMembers().map((member) => ({
+        ...member,
+        battleId: `party:${member.id}`,
+        side: "party",
+        name: member.name
+    }));
+
+    const enemies = battleState.enemy ? [{
+        ...battleState.enemy,
+        battleId: "enemy:0",
+        side: "enemy",
+        name: battleState.enemy.name
+    }] : [];
+
+    return [...party, ...enemies].sort((a, b) => (b.speed || 0) - (a.speed || 0));
 }
 
 function getEquippedWeapon(actor) {
@@ -173,9 +202,16 @@ function learnSpellFromBook(actor, bookTitle) {
     return learned;
 }
 
-function getWeaponMove(actor) {
+function getWeaponMove(actor, moveName = null) {
     const weapon = getWeaponAbility(actor);
-    return (weapon.moves && weapon.moves[0]) || { name: "Basic Strike", skillDamage: weapon.skillDamage || 2, text: "A basic blow." };
+    const moves = weapon.moves && weapon.moves.length ? weapon.moves : [{ name: "Basic Strike", skillDamage: weapon.skillDamage || 2, text: "A basic blow." }];
+    if (!moveName) return moves[0];
+    return moves.find((move) => move.name === moveName) || moves[0];
+}
+
+function getAbilityOptions(actor) {
+    const weapon = getWeaponAbility(actor);
+    return weapon.moves && weapon.moves.length ? weapon.moves : [{ name: "Basic Strike", skillDamage: weapon.skillDamage || 2, text: "A basic blow." }];
 }
 
 function calculateWeaponDamage(actor, enemy, move) {
@@ -190,9 +226,9 @@ function renderRosterLists() {
     const enemyList = document.getElementById("battle-enemy-list");
     if (!partyList || !enemyList) return;
 
-    const livingParty = battleState.partyQueue.length ? battleState.partyQueue : getLivingPartyMembers();
+    const livingParty = getLivingPartyMembers();
     partyList.innerHTML = livingParty.map((member) => {
-        const isActive = member.id === battleState.currentActorId;
+        const isActive = `party:${member.id}` === battleState.currentActorId;
         return `
             <div class="turn-card ${isActive ? "active-turn" : ""} ${member.hp <= 0 ? "down" : ""}">
                 <div class="turn-name">${member.name}</div>
@@ -202,8 +238,9 @@ function renderRosterLists() {
     }).join("");
 
     if (battleState.enemy) {
+        const enemyActive = battleState.currentActorId === "enemy:0";
         enemyList.innerHTML = `
-            <div class="turn-card enemy-card active-turn">
+            <div class="turn-card enemy-card ${enemyActive ? "active-turn" : ""}">
                 <div class="turn-name">${battleState.enemy.name}</div>
                 <div class="turn-meta">HP ${battleState.enemy.hp}/${battleState.enemy.maxHp} · DEF ${battleState.enemy.def || 0}</div>
             </div>
@@ -211,46 +248,86 @@ function renderRosterLists() {
     }
 }
 
+function refreshAbilitySelect() {
+    const select = document.getElementById("battle-ability-select");
+    if (!select) return;
+
+    const current = getCurrentBattleActor();
+    if (!current || current.side !== "party") {
+        select.disabled = true;
+        select.innerHTML = '<option value="basic">Attack</option>';
+        return;
+    }
+
+    const options = getAbilityOptions(current);
+    select.disabled = false;
+    select.innerHTML = options.map((move, index) => `<option value="${move.name}" ${index === 0 ? "selected" : ""}>${move.name}</option>`).join("");
+}
+
 function updateCombatUI() {
     const combatScreen = document.getElementById("combat-screen");
     if (!combatScreen || !battleState.active || !battleState.enemy) return;
 
-    const current = partyData[battleState.currentActorId] || getCurrentPartyMember();
+    const current = getCurrentBattleActor() || getCurrentPartyMember();
     const enemy = battleState.enemy;
+    const currentMember = current && current.side === "party" ? partyData[current.id] : current;
 
-    document.getElementById("battle-player-name").textContent = current.name;
+    document.getElementById("battle-player-name").textContent = currentMember ? currentMember.name : "PARTY";
     document.getElementById("battle-enemy-name").textContent = enemy.name;
     document.getElementById("battle-enemy-label").textContent = enemy.name;
     document.getElementById("battle-enemy-type").textContent = enemy.type === "boss" ? "BOSS ENEMY" : "WILD ENCOUNTER";
     document.getElementById("battle-log").textContent = battleState.log;
-    document.getElementById("battle-turn-banner").textContent = `${current.name}'s turn`;
+    document.getElementById("battle-turn-banner").textContent = `${currentMember ? currentMember.name : enemy.name}'s turn`;
 
-    const playerHpPercent = (current.hp / current.maxHp) * 100;
+    const playerHpPercent = ((currentMember?.hp ?? 0) / (currentMember?.maxHp ?? 1)) * 100;
     const enemyHpPercent = (enemy.hp / enemy.maxHp) * 100;
     document.getElementById("player-hp-fill").style.width = `${Math.max(0, playerHpPercent)}%`;
     document.getElementById("enemy-hp-fill").style.width = `${Math.max(0, enemyHpPercent)}%`;
-    document.getElementById("player-hp-text").textContent = `${current.hp} / ${current.maxHp} HP`;
+    document.getElementById("player-hp-text").textContent = `${currentMember ? currentMember.hp : 0} / ${currentMember ? currentMember.maxHp : 1} HP`;
     document.getElementById("enemy-hp-text").textContent = `${enemy.hp} / ${enemy.maxHp} HP`;
 
+    refreshAbilitySelect();
     renderRosterLists();
 }
 
 function advanceCombatTurn() {
     if (!battleState.active) return;
 
-    const queue = getLivingPartyMembers().sort((a, b) => (b.speed || 0) - (a.speed || 0));
-    battleState.partyQueue = queue;
-
+    const queue = getBattleTurnOrder();
+    battleState.turnOrder = queue;
     if (!queue.length) {
         battleState.active = false;
         return;
     }
 
-    const currentIndex = queue.findIndex((member) => member.id === battleState.currentActorId);
-    const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % queue.length : 0;
-    battleState.currentActorId = queue[nextIndex].id;
-    battleState.log = `${partyData[battleState.currentActorId].name} takes the next turn.`;
+    const currentIndex = queue.findIndex((entity) => entity.battleId === battleState.currentActorId);
+    const nextActor = queue[(currentIndex + 1) % queue.length] || queue[0];
+    battleState.currentActorId = nextActor.battleId;
+    battleState.log = `${nextActor.name} takes the next turn.`;
     updateCombatUI();
+
+    if (nextActor.side === "enemy") {
+        const enemyActor = nextActor;
+        setTimeout(() => {
+            if (!battleState.active || battleState.currentActorId !== enemyActor.battleId) return;
+            const target = getLivingPartyMembers()[0] || partyData.cloud;
+            const attackPower = enemyActor.atk + randomBetween(0, 8);
+            const incomingDamage = Math.max(0, attackPower - Math.floor((target.def || 0) / 6));
+            target.hp = Math.max(0, target.hp - incomingDamage);
+            battleState.log = `${enemyActor.name} strikes ${target.name} for ${incomingDamage} damage.`;
+            updateCombatUI();
+            if (target.hp <= 0) {
+                const aliveQueue = getLivingPartyMembers();
+                if (!aliveQueue.length) {
+                    battleState.active = false;
+                    battleState.log = "The party has fallen. The battle ends.";
+                    updateCombatUI();
+                    return;
+                }
+            }
+            advanceCombatTurn();
+        }, 350);
+    }
 }
 
 function showCombatScreen() {
@@ -289,9 +366,9 @@ function startBattle(enemyName = null, enemyType = "wild") {
     battleState.enemy = enemy;
     battleState.playerGuard = false;
     battleState.round = 1;
-    battleState.partyQueue = getLivingPartyMembers().sort((a, b) => (b.speed || 0) - (a.speed || 0));
-    battleState.currentActorId = battleState.partyQueue[0]?.id || currentCharacterId;
-    battleState.log = `${enemy.name} lunges into battle! ${partyData[battleState.currentActorId].name} acts first.`;
+    battleState.turnOrder = getBattleTurnOrder();
+    battleState.currentActorId = battleState.turnOrder[0]?.battleId || `party:${currentCharacterId}`;
+    battleState.log = `${enemy.name} lunges into battle! ${battleState.turnOrder[0]?.name || "The party"} acts first.`;
 
     document.getElementById("window-map").style.display = "none";
     document.getElementById("window-inventory").style.display = "none";
@@ -304,87 +381,89 @@ function startBattle(enemyName = null, enemyType = "wild") {
 function resolveEnemyTurn() {
     if (!battleState.active || !battleState.enemy) return;
 
-    const current = partyData[battleState.currentActorId] || getCurrentPartyMember();
-    const enemy = battleState.enemy;
-    const attackPower = enemy.atk + randomBetween(0, 8);
-    let incomingDamage = attackPower - Math.floor(current.def / 6);
+    const current = getCurrentBattleActor();
+    if (!current || current.side !== "enemy") return;
+
+    const target = getLivingPartyMembers()[0] || partyData.cloud;
+    const attackPower = current.atk + randomBetween(0, 8);
+    let incomingDamage = attackPower - Math.floor((target.def || 0) / 6);
 
     if (battleState.playerGuard) {
         incomingDamage = Math.max(2, Math.floor(incomingDamage * 0.35));
         battleState.playerGuard = false;
-        battleState.log = `${enemy.name} hits through your guard for ${incomingDamage} damage.`;
+        battleState.log = `${current.name} hits through your guard for ${incomingDamage} damage.`;
     } else {
-        battleState.log = `${enemy.name} strikes ${current.name} for ${incomingDamage} damage.`;
+        battleState.log = `${current.name} strikes ${target.name} for ${incomingDamage} damage.`;
     }
 
-    current.hp = Math.max(0, current.hp - incomingDamage);
+    target.hp = Math.max(0, target.hp - incomingDamage);
     updateCombatUI();
 
-    if (current.hp <= 0) {
+    if (target.hp <= 0) {
         const aliveQueue = getLivingPartyMembers();
         if (!aliveQueue.length) {
             battleState.active = false;
-            current.hp = current.maxHp;
-            battleState.log = `${current.name} was defeated. The party retreats to the map.`;
+            target.hp = target.maxHp;
+            battleState.log = `${target.name} was defeated. The party retreats to the map.`;
             hideCombatScreen();
             document.getElementById("window-map").style.display = "flex";
             gameMode = "map";
             return;
         }
-
-        battleState.currentActorId = aliveQueue[0].id;
-        battleState.log = `${current.name} falls, and ${partyData[battleState.currentActorId].name} steps in.`;
-        updateCombatUI();
     }
 }
 
 function resolveBattleAction(action) {
     if (!battleState.active || !battleState.enemy) return;
 
-    const current = partyData[battleState.currentActorId] || getCurrentPartyMember();
+    const current = getCurrentBattleActor();
+    if (!current || current.side !== "party") return;
+
+    const actor = partyData[current.id];
     const enemy = battleState.enemy;
-    const weapon = getWeaponAbility(current);
-    const spell = getSpellAbility(current);
-    const move = getWeaponMove(current);
+    const weapon = getWeaponAbility(actor);
+    const spell = getSpellAbility(actor);
+    const moveName = document.getElementById("battle-ability-select")?.value || "Basic Strike";
+    const move = getWeaponMove(actor, moveName);
 
     if (action === "attack") {
-        const damage = calculateWeaponDamage(current, enemy, move);
+        const damage = calculateWeaponDamage(actor, enemy, move);
         enemy.hp = Math.max(0, enemy.hp - damage);
-        battleState.log = `${current.name} uses ${move.name} for ${damage} damage. ${move.text}`;
+        battleState.log = `${actor.name} uses ${move.name} for ${damage} damage. ${move.text}`;
     }
 
     if (action === "magic") {
         const chantInput = document.getElementById("chant-input")?.value || "";
-        const knownSpell = getSpellForChant(current, chantInput);
+        const knownSpell = getSpellForChant(actor, chantInput);
 
         if (!knownSpell) {
-            battleState.log = `${current.name} chants "${chantInput || "(empty)"}" but the phrase is unfamiliar.`;
+            battleState.log = `${actor.name} chants "${chantInput || "(empty)"}" but the phrase is unfamiliar.`;
             return;
         }
 
-        const realMagic = Number(current.magic || 1);
+        const realMagic = Number(actor.magic || 1);
         const spellDamage = Math.max(0, Math.round((knownSpell.baseDamage || 120) * realMagic - (enemy.magicDef || 0) * 2));
         enemy.hp = Math.max(0, enemy.hp - spellDamage);
-        document.getElementById("chant-input").value = "";
-        battleState.log = `${current.name} chants "${knownSpell.chant}" and casts ${knownSpell.name} for ${spellDamage} damage.`;
+        if (document.getElementById("chant-input")) document.getElementById("chant-input").value = "";
+        battleState.log = `${actor.name} chants "${knownSpell.chant}" and casts ${knownSpell.name} for ${spellDamage} damage.`;
     }
 
     if (action === "guard") {
         battleState.playerGuard = true;
-        battleState.log = `${current.name} braces for impact.`;
+        battleState.log = `${actor.name} braces for impact.`;
     }
 
     if (action === "flee") {
         if (Math.random() < 0.6) {
             battleState.active = false;
             battleState.enemy = null;
-            battleState.log = `${current.name} escapes the encounter.`;
+            battleState.log = `${actor.name} escapes the encounter.`;
             hideCombatScreen();
             document.getElementById("window-map").style.display = "flex";
             gameMode = "map";
             return;
         }
-        battleState.log = `${current.name} fails to escape!`;
+        battleState.log = `${actor.name} fails to escape!`;
     }
 
     updateCombatUI();
@@ -393,7 +472,7 @@ function resolveBattleAction(action) {
         battleState.log = `${enemy.name} is defeated!`;
         if (enemy.isBoss) {
             boss.active = false;
-            battleState.log = `Boss defeated! ${current.name} takes control of the arena.`;
+            battleState.log = `Boss defeated! ${actor.name} takes control of the arena.`;
         }
         battleState.active = false;
         battleState.enemy = null;
@@ -403,12 +482,6 @@ function resolveBattleAction(action) {
         updateCombatUI();
         drawMap();
         return;
-    }
-
-    if (action !== "guard" && action !== "flee") {
-        resolveEnemyTurn();
-    } else if (action === "flee" && battleState.active) {
-        resolveEnemyTurn();
     }
 
     if (battleState.active) {

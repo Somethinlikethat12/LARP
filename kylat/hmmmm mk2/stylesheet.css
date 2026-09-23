@@ -128,13 +128,16 @@ tr:hover td { background-color: rgb(25, 6, 6); }
     background: rgba(80, 20, 20, 0.9); border: 1px solid rgb(200, 50, 50); color: white; padding: 10px 10px; cursor: pointer; font-weight: bold; text-transform: uppercase;
 }
 .battle-action:hover { background: rgba(120,30,30,0.9); }
-.chant-cast-box {
-    display: flex; align-items: center; gap: 10px; margin-bottom: 16px; background: rgba(0,0,0,0.2); border: 1px solid rgba(200,50,50,0.35); padding: 8px 12px;
+.combat-utility-row {
+    display: grid; grid-template-columns: 200px 1fr; gap: 12px; margin-bottom: 16px;
 }
-.chant-cast-box label {
+.ability-select-wrap, .chant-cast-box {
+    display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,0.2); border: 1px solid rgba(200,50,50,0.35); padding: 8px 12px;
+}
+.ability-select-wrap label, .chant-cast-box label {
     color: #ffcf9d; letter-spacing: 1.5px; font-size: 11px; text-transform: uppercase;
 }
-.chant-cast-box input {
+.ability-select-wrap select, .chant-cast-box input {
     flex: 1; background: rgba(20,8,8,0.8); border: 1px solid rgba(200,50,50,0.6); color: white; padding: 8px 10px; font-size: 13px;
 }
 .battle-log {
