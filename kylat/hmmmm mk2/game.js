@@ -217,6 +217,7 @@ function getWeaponMove(actor, moveName = null) {
 function getAbilityOptions(actor) {
     const baseMoves = getWeaponAbility(actor).moves && getWeaponAbility(actor).moves.length ? getWeaponAbility(actor).moves : [{ name: "Basic Strike", skillDamage: getWeaponAbility(actor).skillDamage || 2, text: "A basic blow." }];
     return [
+        { name: "Basic Attack", skillDamage: 2, text: "A straightforward strike with your weapon." },
         ...baseMoves,
         { name: "Guard", skillDamage: 0, text: "Brace for the next hit." },
         { name: "Flee", skillDamage: 0, text: "Attempt a retreat." }
@@ -279,7 +280,7 @@ function refreshAbilitySelect() {
     const current = getCurrentBattleActor();
     if (!current || current.side !== "party") {
         select.disabled = true;
-        select.innerHTML = '<option value="Basic Strike">Basic Strike</option>';
+        select.innerHTML = '<option value="Basic Attack">Basic Attack</option>';
         return;
     }
 
@@ -291,7 +292,7 @@ function refreshAbilitySelect() {
 
 function resolveSelectedCombatAction() {
     const select = document.getElementById("battle-ability-select");
-    const choice = select?.value || "Basic Strike";
+    const choice = select?.value || "Basic Attack";
 
     if (choice === "Guard") return "guard";
     if (choice === "Flee") return "flee";
@@ -504,7 +505,7 @@ function resolveBattleAction(action) {
 
     const actor = partyData[current.id];
     const enemy = battleState.enemy;
-    const moveName = document.getElementById("battle-ability-select")?.value || "Basic Strike";
+    const moveName = document.getElementById("battle-ability-select")?.value || "Basic Attack";
     const selectedAction = action === "attack" ? resolveSelectedCombatAction() : action;
     const move = getWeaponMove(actor, moveName);
     const chantInput = document.getElementById("chant-input")?.value || "";
@@ -797,8 +798,29 @@ document.getElementById("btn-cancel").addEventListener("click", () => {
     document.getElementById("confirm-modal").style.display = "none";
 });
 
+function openActMenu() {
+    const menu = document.getElementById("act-menu");
+    if (!menu) return;
+    menu.hidden = !menu.hidden;
+}
+
+function chooseActMove(moveName) {
+    const select = document.getElementById("battle-ability-select");
+    if (!select) return;
+    select.value = moveName;
+    const menu = document.getElementById("act-menu");
+    if (menu) menu.hidden = true;
+    resolveBattleAction("attack");
+}
+
 document.querySelectorAll(".battle-action").forEach(button => {
     button.addEventListener("click", () => resolveBattleAction(button.dataset.action));
+});
+
+document.getElementById("act-button")?.addEventListener("click", openActMenu);
+
+document.querySelectorAll(".act-option").forEach((button) => {
+    button.addEventListener("click", () => chooseActMove(button.dataset.move));
 });
 
 document.getElementById("chant-input")?.addEventListener("keydown", (event) => {

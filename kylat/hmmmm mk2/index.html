@@ -63,15 +63,24 @@
 
             <div class="combat-utility-row">
                 <div class="ability-select-wrap">
-                    <label for="battle-ability-select">ACT</label>
-                    <select id="battle-ability-select">
-                        <option value="Basic Strike">Basic Strike</option>
+                    <button id="act-button" type="button" class="battle-action small">ACT</button>
+                    <select id="battle-ability-select" aria-label="action menu">
+                        <option value="Basic Attack">Basic Attack</option>
                     </select>
                 </div>
                 <div class="chant-cast-box">
                     <label for="chant-input">CHANT</label>
                     <input id="chant-input" type="text" maxlength="120" placeholder="Type the spell chant here..." />
                 </div>
+            </div>
+
+            <div id="act-menu" class="act-menu" hidden>
+                <button type="button" class="act-option" data-move="Basic Attack">Basic Attack</button>
+                <button type="button" class="act-option" data-move="Heavy Slice">Heavy Slice</button>
+                <button type="button" class="act-option" data-move="Guard Break">Guard Break</button>
+                <button type="button" class="act-option" data-move="Rending Arc">Rending Arc</button>
+                <button type="button" class="act-option" data-move="Guard">Guard</button>
+                <button type="button" class="act-option" data-move="Flee">Flee</button>
             </div>
 
             <div id="battle-log" class="battle-log">Choose an action.</div>
