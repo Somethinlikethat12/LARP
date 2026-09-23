@@ -71,15 +71,6 @@
                 </div>
             </div>
 
-            <div id="act-menu" class="act-menu" hidden>
-                <button type="button" class="act-option" data-action="attack" data-move="Basic Attack">Basic Attack</button>
-                <button type="button" class="act-option" data-action="attack" data-move="Heavy Slice">Heavy Slice</button>
-                <button type="button" class="act-option" data-action="attack" data-move="Guard Break">Guard Break</button>
-                <button type="button" class="act-option" data-action="attack" data-move="Rending Arc">Rending Arc</button>
-                <button type="button" class="act-option" data-action="guard" data-move="Guard">Guard</button>
-                <button type="button" class="act-option" data-action="flee" data-move="Flee">Flee</button>
-            </div>
-
             <div id="battle-log" class="battle-log">Choose an action.</div>
         </div>
     </div>
@@ -103,6 +94,21 @@
                     <tr data-category="one" data-type="armor" data-qty="1"><td>Iron Helmet</td><td>Head (+8 DEF)</td><td class="qty-display">x1</td></tr>
                     <tr data-category="two" data-type="focus" data-qty="5"><td>Fireball Scroll</td><td>Deals 40 Magic Damage</td><td class="qty-display">x5</td></tr>
                 </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="window-act" class="menu-window" style="display: none;">
+        <div class="menu-sidebar">
+            <button class="char-tab active" type="button">ACT</button>
+        </div>
+        <div class="section">
+            <h2 class="theader">ABILITY MENU</h2>
+            <table>
+                <thead>
+                    <tr><th>Move</th><th>Effect</th></tr>
+                </thead>
+                <tbody id="act-menu-rows"></tbody>
             </table>
         </div>
     </div>

@@ -273,33 +273,38 @@ function renderRosterLists() {
     }
 }
 
-function refreshAbilitySelect() {
+function populateActMenu() {
+    const menu = document.getElementById("act-menu-rows");
     const current = getCurrentBattleActor();
-    const menu = document.getElementById("act-menu");
-    if (!menu) return;
+    if (!menu || !current || current.side !== "party") {
+        if (menu) menu.innerHTML = "";
+        return;
+    }
 
-    const buttons = menu.querySelectorAll(".act-option");
-    buttons.forEach((button) => {
-        const moveName = button.dataset.move || "Basic Attack";
-        const isPartyTurn = current && current.side === "party";
-        const isAllowed = !isPartyTurn ? false : true;
-        button.disabled = !isAllowed;
-        button.style.opacity = isAllowed ? "1" : "0.5";
-        if (moveName === "Flee") button.style.display = "block";
+    const actor = partyData[current.id];
+    const moves = getAbilityOptions(actor).map((move) => {
+        if (move.name === "Guard") return { action: "guard", move: move.name, text: move.text };
+        if (move.name === "Flee") return { action: "flee", move: move.name, text: move.text };
+        return { action: "attack", move: move.name, text: move.text };
     });
 
-    if (!current || current.side !== "party") {
-        menu.hidden = true;
-    }
+    menu.innerHTML = moves.map((move) => `
+        <tr data-action="${move.action}" data-move="${move.move}">
+            <td>${move.move}</td>
+            <td>${move.text}</td>
+        </tr>
+    `).join("");
+
+    menu.querySelectorAll("tr").forEach((row) => {
+        row.addEventListener("click", () => {
+            const windowAct = document.getElementById("window-act");
+            if (windowAct) windowAct.style.display = "none";
+            resolveBattleAction(row.dataset.action, row.dataset.move);
+        });
+    });
 }
 
 function resolveSelectedCombatAction() {
-    const menu = document.getElementById("act-menu");
-    const selected = menu?.querySelector(".act-option.selected");
-    if (!selected) return "attack";
-
-    if (selected.dataset.action === "guard") return "guard";
-    if (selected.dataset.action === "flee") return "flee";
     return "attack";
 }
 
@@ -336,7 +341,7 @@ function updateCombatUI() {
     document.getElementById("player-hp-text").textContent = `${currentMember ? currentMember.hp : 0} / ${currentMember ? currentMember.maxHp : 1} HP`;
     document.getElementById("enemy-hp-text").textContent = `${enemy.hp} / ${enemy.maxHp} HP`;
 
-    refreshAbilitySelect();
+    populateActMenu();
     refreshChantInput();
     renderRosterLists();
 }
@@ -804,20 +809,10 @@ document.getElementById("btn-cancel").addEventListener("click", () => {
 });
 
 function openActMenu() {
-    const menu = document.getElementById("act-menu");
+    const menu = document.getElementById("window-act");
     if (!menu) return;
-    menu.hidden = !menu.hidden;
-}
-
-function chooseActMove(button) {
-    const menu = document.getElementById("act-menu");
-    if (!menu || !button) return;
-
-    document.querySelectorAll(".act-option").forEach((option) => option.classList.toggle("selected", option === button));
-    menu.hidden = true;
-    const action = button.dataset.action || "attack";
-    const moveName = button.dataset.move || "Basic Attack";
-    resolveBattleAction(action, moveName);
+    menu.style.display = "flex";
+    populateActMenu();
 }
 
 document.querySelectorAll(".battle-action").forEach(button => {
@@ -825,10 +820,6 @@ document.querySelectorAll(".battle-action").forEach(button => {
 });
 
 document.getElementById("act-button")?.addEventListener("click", openActMenu);
-
-document.querySelectorAll(".act-option").forEach((button) => {
-    button.addEventListener("click", () => chooseActMove(button));
-});
 
 document.getElementById("chant-input")?.addEventListener("keydown", (event) => {
     const activeBattleActor = getCurrentBattleActor();
