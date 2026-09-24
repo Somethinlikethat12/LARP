@@ -1,14 +1,18 @@
-<!doctype HTML>
+<!doctype html>
+<html lang="en">
 <head>
-<script type="module">
-    import { Character, Party } from './RPG stuff.js';
+    <meta charset="UTF-8">
+    <title>RPG Game</title>
+    <!-- If 'char' and 'party' are defined inside 'RPG stuff.js', you need to import them -->
+    <script type="module">
+        import { char, party } from './RPG stuff.js';
 
-    const guy = new Character('fuin');
-    const guy2 = new Character('fuidn');
-    const party1 = new Party(guy, guy2);
-</script>
+        // Passed strings must be enclosed in quotes
+        const guy = new char("fuin"); 
+        const guy2 = new char("fuidn"); 
+        const party1 = new party(guy, guy2);
+    </script>
 </head>
 <body>
-  
 </body>
 </html>
