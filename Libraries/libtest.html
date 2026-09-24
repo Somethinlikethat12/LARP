@@ -3,14 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <title>RPG Game</title>
-    <!-- If 'char' and 'party' are defined inside 'RPG stuff.js', you need to import them -->
     <script type="module">
-        import { char, party } from './RPG stuff.js';
+        // 1. Import the capitalized class names from your file
+        import { Char, Party } from './RPG stuff.js';
 
-        // Passed strings must be enclosed in quotes
-        const guy = new char("fuin"); 
-        const guy2 = new char("fuidn"); 
-        const party1 = new party(guy, guy2);
+        // 2. Provide the arguments matching your constructor: 
+        // (name, baseHP, charclass, baseSTR, basePD, baseMD, baseINT, maxlevel, xpcurvetype, xpcurveM)
+        const guy = new Char("fuin", 100, "Warrior", 15, 10, 5, 5, 50, "linear", 1.2);
+        const guy2 = new Char("fuidn", 80, "Mage", 5, 4, 12, 18, 50, "exponential", 1.5);
+
+        // 3. Combine them into a party
+        const party1 = new Party(guy, guy2);
+
+        // Quick check in your browser console to verify it works!
+        console.log(party1);
     </script>
 </head>
 <body>
