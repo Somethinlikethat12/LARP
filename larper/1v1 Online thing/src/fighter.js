@@ -12,7 +12,7 @@ const PHYS = {
 	fastFallVel: 900
 };
 
-const LIGHT = { startup: 0.18, active: 0.09, recovery: 0.16, dmg: 7, kb: 260, hitstun: 0.26, range: 92, stamina: 6 };
+const LIGHT = { startup: 0.18, active: 0.09, recovery: 0.20, dmg: 7, kb: 260, hitstun: 0.26, range: 92, stamina: 6 };
 const HEAVY = { startup: 0.42, active: 0.11, recovery: 0.38, dmg: 17, kb: 560, hitstun: 0.48, range: 104, stamina: 17 };
 
 const DASH = { duration: 0.17, speed: 900, iframes: 0.15, cooldown: 0.42, stamina: 18 };
@@ -320,15 +320,19 @@ class Fighter {
 			ctx.stroke();
 			ctx.restore();
 		}
-		if (this.attack && this.attack.type === 'light' && this.attack.phase === 'startup') {
-			const tellPulse = 0.55 + Math.sin(this.stateT * 24) * 0.2;
+		if (this.attack && this.attack.phase === 'startup') {
+			const isHeavyTell = this.attack.type === 'heavy';
+			const tellPulse = isHeavyTell
+				? 0.7 + Math.sin(this.stateT * 18) * 0.25
+				: 0.55 + Math.sin(this.stateT * 24) * 0.2;
 			ctx.save();
 			ctx.globalAlpha = tellPulse;
-			ctx.strokeStyle = '#ffd27a';
-			ctx.lineWidth = 2;
-			ctx.shadowColor = '#ff9a3d';
-			ctx.shadowBlur = 14;
-			roundRect(ctx, r.x - 6, bodyY - 6, r.w + 12, bodyH + 12, 14);
+			ctx.strokeStyle = isHeavyTell ? '#ff6b3d' : '#ffd27a';
+			ctx.lineWidth = isHeavyTell ? 4 : 2;
+			ctx.shadowColor = isHeavyTell ? '#ff4b2b' : '#ff9a3d';
+			ctx.shadowBlur = isHeavyTell ? 24 : 14;
+			const tellInset = isHeavyTell ? 10 : 6;
+			roundRect(ctx, r.x - tellInset, bodyY - tellInset, r.w + tellInset * 2, bodyH + tellInset * 2, isHeavyTell ? 18 : 14);
 			ctx.stroke();
 			ctx.restore();
 		}
