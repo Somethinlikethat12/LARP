@@ -1,4 +1,5 @@
-export class Char("name",baseHP,"charclass",baseSTR,basePD,baseMD,baseINT,maxlevel,"xpcurvetype",xpcurveM,){
+export class Char{
+   constructor(name,baseHP,charclass,baseSTR,basePD,baseMD,baseINT,maxlevel,xpcurvetype,xpcurveM){
     this.name = name;
     this.class = charclass;
     this.baseHP = baseHP;
@@ -10,7 +11,10 @@ export class Char("name",baseHP,"charclass",baseSTR,basePD,baseMD,baseINT,maxlev
     this.basePD = basePD;
     this.xpcurvetype = xpcurvetype;
     this.xpcurveM = xpcurveM;
+   }
 }
-export class party(...char){
+export class Party {
+  constructor(...char) {
     this.members = char;
+  }
 }
