@@ -12,8 +12,8 @@ const PHYS = {
 	fastFallVel: 900
 };
 
-const LIGHT = { startup: 0.09, active: 0.09, recovery: 0.16, dmg: 7, kb: 260, hitstun: 0.26, range: 92, stamina: 6 };
-const HEAVY = { startup: 0.24, active: 0.11, recovery: 0.38, dmg: 17, kb: 560, hitstun: 0.48, range: 104, stamina: 17 };
+const LIGHT = { startup: 0.18, active: 0.09, recovery: 0.16, dmg: 7, kb: 260, hitstun: 0.26, range: 92, stamina: 6 };
+const HEAVY = { startup: 0.42, active: 0.11, recovery: 0.38, dmg: 17, kb: 560, hitstun: 0.48, range: 104, stamina: 17 };
 
 const DASH = { duration: 0.17, speed: 900, iframes: 0.15, cooldown: 0.42, stamina: 18 };
 const PARRY_WINDOW = 0.14;
@@ -74,7 +74,9 @@ class Fighter {
 	get centerY() { return this.y - this.height / 2; }
 
 	bodyRect() {
-		return { x: this.x - this.width / 2, y: this.y - this.height, w: this.width, h: this.height };
+		const crouchOffset = this.crouching && this.grounded ? 18 : 0;
+		const height = this.height - crouchOffset;
+		return { x: this.x - this.width / 2, y: this.y - height, w: this.width, h: height };
 	}
 
 	attackHitbox() {
@@ -82,7 +84,8 @@ class Fighter {
 		const spec = this.attack.type === 'heavy' ? HEAVY : LIGHT;
 		const h = 46;
 		const startX = this.facing > 0 ? this.x + this.width / 2 : this.x - this.width / 2 - spec.range;
-		return { x: startX, y: this.y - this.height * 0.62 - h / 2, w: spec.range, h };
+		const centerY = this.y - this.height * 0.62;
+		return { x: startX, y: centerY - h / 2, w: spec.range, h };
 	}
 
 	canAct() {
@@ -276,10 +279,8 @@ class Fighter {
 		ctx.ellipse(this.x, ARENA.ground + 6, this.width * 0.6, 8, 0, 0, Math.PI * 2);
 		ctx.fill();
 
-		const bob = this.state === 'walk' ? Math.sin(this.stateT * 14) * 3 : 0;
-		const crouchOffset = this.crouching ? 18 : 0;
-		const bodyH = r.h - crouchOffset;
-		const bodyY = this.y - bodyH + bob;
+		const bodyH = r.h;
+		const bodyY = this.y - bodyH;
 
 		// afterimage trail while dashing
 		if (this.dash) {
@@ -301,10 +302,11 @@ class Fighter {
 
 		// guard glow
 		if (this.state === 'block') {
+			const guardColor = this.blockPressedAt <= PARRY_WINDOW ? '#ff9a3d' : '#9adcff';
 			ctx.save();
-			ctx.strokeStyle = '#9adcff';
+			ctx.strokeStyle = guardColor;
 			ctx.lineWidth = 3;
-			ctx.shadowColor = '#9adcff';
+			ctx.shadowColor = guardColor;
 			ctx.shadowBlur = 12;
 			roundRect(ctx, r.x - 3, bodyY - 3, r.w + 6, bodyH + 6, 12);
 			ctx.stroke();
@@ -315,6 +317,18 @@ class Fighter {
 			ctx.strokeStyle = '#ff5b3d';
 			ctx.lineWidth = 3;
 			roundRect(ctx, r.x - 3, bodyY - 3, r.w + 6, bodyH + 6, 12);
+			ctx.stroke();
+			ctx.restore();
+		}
+		if (this.attack && this.attack.type === 'light' && this.attack.phase === 'startup') {
+			const tellPulse = 0.55 + Math.sin(this.stateT * 24) * 0.2;
+			ctx.save();
+			ctx.globalAlpha = tellPulse;
+			ctx.strokeStyle = '#ffd27a';
+			ctx.lineWidth = 2;
+			ctx.shadowColor = '#ff9a3d';
+			ctx.shadowBlur = 14;
+			roundRect(ctx, r.x - 6, bodyY - 6, r.w + 12, bodyH + 12, 14);
 			ctx.stroke();
 			ctx.restore();
 		}
@@ -329,15 +343,23 @@ class Fighter {
 		// weapon swipe indicator (simple blade shape while active)
 		if (this.attack && this.attack.phase !== 'recovery') {
 			const spec = this.attack.type === 'heavy' ? HEAVY : LIGHT;
-			const reach = this.attack.phase === 'startup'
-				? spec.range * 0.25 * (this.attack.timer / spec.startup)
-				: spec.range;
-			ctx.strokeStyle = this.attack.type === 'heavy' ? '#ffce3d' : '#ffffff';
-			ctx.lineWidth = this.attack.type === 'heavy' ? 6 : 4;
+			const gripX = this.x + this.facing * r.w * 0.22;
+			const gripY = this.y - this.height * 0.62;
+			const bladeLength = spec.range + r.w * 0.12;
+			const startupProgress = Math.min(1, this.attack.timer / spec.startup);
+			const activeProgress = Math.min(1, this.attack.timer / spec.active);
+			const tipAngle = this.attack.phase === 'startup'
+				? -1.18 + startupProgress * 0.12
+				: -1.06 + activeProgress * 1.34;
+			const tipX = gripX + this.facing * Math.cos(tipAngle) * bladeLength;
+			const tipY = gripY + Math.sin(tipAngle) * bladeLength;
+			ctx.strokeStyle = this.attack.type === 'heavy' ? '#ffce3d'
+				: (this.attack.phase === 'startup' ? '#ffd27a' : '#ffffff');
+			ctx.lineWidth = this.attack.type === 'heavy' ? 8 : 5;
 			ctx.lineCap = 'round';
 			ctx.beginPath();
-			ctx.moveTo(this.x + this.facing * r.w * 0.3, bodyY + bodyH * 0.4);
-			ctx.lineTo(this.x + this.facing * (r.w * 0.3 + reach), bodyY + bodyH * 0.32);
+			ctx.moveTo(gripX, gripY);
+			ctx.lineTo(tipX, tipY);
 			ctx.stroke();
 		}
 
@@ -378,9 +400,9 @@ function rectsOverlap(a, b) {
 }
 
 function resolveCombat(a, b, fx, onEvent) {
+	checkClash(a, b, fx, onEvent);
 	tryLand(a, b, fx, onEvent);
 	tryLand(b, a, fx, onEvent);
-	checkClash(a, b, fx, onEvent);
 }
 
 function tryLand(attacker, defender, fx, onEvent) {
@@ -410,8 +432,10 @@ function tryLand(attacker, defender, fx, onEvent) {
 		fx.shakeScreen(6);
 		fx.spawnText(hitX, hitY - 34, 'PARRY!', '#ffffff', true);
 		fx.spawnBlockSpark(hitX, hitY, awayDir);
-		attacker.enterHitstun(PARRY_STUN);
-		attacker.applyKnockback(spec.kb * 0.6, awayDir);
+		if (kind === 'heavy') attacker.takeDamage(spec.dmg * 0.5);
+		if (attacker.hp > 0) attacker.enterHitstun(kind === 'heavy' ? 1 : PARRY_STUN);
+		else { attacker.attack = null; attacker.dash = null; }
+		attacker.applyKnockback(spec.kb * 0.35, -awayDir);
 		defender.stamina = Math.min(STAMINA_MAX, defender.stamina + 10);
 		onEvent && onEvent({ type: 'parry', x: hitX, y: hitY, dir: awayDir });
 		return;
@@ -421,7 +445,7 @@ function tryLand(attacker, defender, fx, onEvent) {
 		const chip = spec.dmg * BLOCK_CHIP_MULT;
 		defender.takeDamage(chip);
 		defender.takeStaminaHit(spec.stamina * BLOCK_STAMINA_MULT);
-		defender.applyKnockback(spec.kb * 0.35, -awayDir);
+		defender.applyKnockback(spec.kb * 0.22, awayDir);
 		fx.spawnBlockSpark(hitX, hitY, awayDir);
 		fx.shakeScreen(2);
 		if (defender.stamina <= 0) defender.enterGuardbreak();
@@ -431,7 +455,7 @@ function tryLand(attacker, defender, fx, onEvent) {
 
 	// clean hit
 	defender.takeDamage(spec.dmg);
-	defender.applyKnockback(spec.kb, -awayDir);
+	defender.applyKnockback(spec.kb * 0.6, awayDir);
 	if (defender.hp > 0) defender.enterHitstun(spec.hitstun);
 	fx.spawnSpark(hitX, hitY, '#ffffff', kind === 'heavy' ? 20 : 11, kind === 'heavy' ? 620 : 380);
 	fx.spawnSlash(hitX, hitY, awayDir, kind, attacker.color);
