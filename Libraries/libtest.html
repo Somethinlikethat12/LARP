@@ -1,17 +1,17 @@
 <!doctype HTML>
 <head>
-<script type="module">
-  import { Char, Party } from './RPG stuff.js';
+<!-- Load the core RPG logic first (make sure there are no 'import' or 'export' keywords inside it!) -->
+<script src="./RPG stuff.js"></script>
 
+<!-- Everything in this script is now automatically global and accessible in the console -->
+<script>
   const guy = new Char("fuin", 100, "Warrior", 15, 10, 5, 5, 50, "linear", 1.2);
   const guy2 = new Char("fuidn", 80, "Mage", 5, 4, 12, 18, 50, "exponential", 1.5);
-
+  
   const party1 = new Party(guy, guy2);
   console.log(party1);
-
-  // Expose party1 to the global window object for console testing
-  window.party1 = party1; 
 </script>
+
 </head>
 <boddy>
   
