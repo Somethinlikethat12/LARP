@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0a0710">
+<link rel="icon" href="data:,">
+<title>Steel Edge // 1v1 Duel</title>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<main class="shell">
+
+	<div class="arena-wrap">
+		<canvas id="stage" width="1280" height="560"></canvas>
+
+		<!-- HUD (always overlaid during match) -->
+		<section id="hud" class="hud hidden">
+			<div class="side p1">
+				<div class="tag"><span class="dot"></span><strong id="p1-name">P1</strong></div>
+				<div class="bar hp"><div class="fill" id="p1-hp"></div></div>
+				<div class="bar sp"><div class="fill" id="p1-sp"></div></div>
+				<div class="pips" id="p1-pips"></div>
+			</div>
+			<div class="center">
+				<div class="timer" id="timer">60</div>
+			</div>
+			<div class="side p2">
+				<div class="tag"><strong id="p2-name">P2</strong><span class="dot"></span></div>
+				<div class="bar hp"><div class="fill" id="p2-hp"></div></div>
+				<div class="bar sp"><div class="fill" id="p2-sp"></div></div>
+				<div class="pips" id="p2-pips"></div>
+			</div>
+		</section>
+
+		<div id="banner" class="banner hidden"></div>
+		<div id="connstatus" class="connstatus hidden"></div>
+
+		<!-- Main menu -->
+		<section id="screen-main" class="screen">
+			<h1 class="title">STEEL <span>EDGE</span></h1>
+			<p class="subtitle">Fast, brutal, parriable. A local &amp; online 1v1 side-scrolling duel.</p>
+			<div class="menu-col">
+				<button class="btn primary" data-action="local">⚔ Local Versus (same device)</button>
+				<button class="btn" data-action="online">🌐 Online Versus</button>
+				<button class="btn ghost" data-action="controls">Controls &amp; Rules</button>
+			</div>
+		</section>
+
+		<!-- Online setup -->
+		<section id="screen-online" class="screen hidden">
+			<h2>Online Versus</h2>
+			<div class="menu-col" id="online-choice">
+				<button class="btn primary" data-action="host">Host a Match</button>
+				<button class="btn" data-action="join">Join a Match</button>
+				<button class="btn ghost" data-action="back">Back</button>
+			</div>
+
+			<div class="menu-col hidden" id="online-host">
+				<p>Share this code with your opponent:</p>
+				<div class="code-box" id="host-code">…</div>
+				<p class="hint" id="host-status">Generating room…</p>
+				<button class="btn ghost" data-action="cancel-online">Cancel</button>
+			</div>
+
+			<div class="menu-col hidden" id="online-join">
+				<p>Enter your opponent's code:</p>
+				<input id="join-code" class="code-input" placeholder="room code" autocomplete="off" spellcheck="false">
+				<button class="btn primary" data-action="connect">Connect</button>
+				<p class="hint" id="join-status"></p>
+				<button class="btn ghost" data-action="cancel-online">Cancel</button>
+			</div>
+		</section>
+
+		<!-- Controls / rules -->
+		<section id="screen-controls" class="screen hidden">
+			<h2>Controls</h2>
+			<div class="controls-grid">
+				<div class="controls-col p1-col">
+					<h3>Player 1 (Red)</h3>
+					<ul>
+						<li><b>A / D</b> — Move</li>
+						<li><b>W</b> — Jump</li>
+						<li><b>S</b> — Crouch / Fast-fall</li>
+						<li><b>F</b> — Light Slash</li>
+						<li><b>G</b> — Heavy Slash</li>
+						<li><b>Space</b> — Dodge / Dash</li>
+						<li><b>Left Shift</b> — Block (hold) / Parry (tap)</li>
+					</ul>
+				</div>
+				<div class="controls-col p2-col">
+					<h3>Player 2 (Blue)</h3>
+					<ul>
+						<li><b>← / →</b> — Move</li>
+						<li><b>↑</b> — Jump</li>
+						<li><b>↓</b> — Crouch / Fast-fall</li>
+						<li><b>K</b> — Light Slash</li>
+						<li><b>L</b> — Heavy Slash</li>
+						<li><b>/</b> — Dodge / Dash</li>
+						<li><b>Right Shift</b> — Block (hold) / Parry (tap)</li>
+					</ul>
+				</div>
+			</div>
+			<p class="hint">Tap block the instant before a hit lands to <b>parry</b> — it fully negates damage and leaves the attacker stunned. Holding block absorbs most damage but drains stamina and lets some chip damage through. Dodging grants brief invincibility but costs stamina and has a cooldown, so don't spam it.</p>
+			<button class="btn ghost" data-action="back">Back</button>
+		</section>
+
+		<!-- Round / match result -->
+		<section id="screen-result" class="screen hidden">
+			<h2 id="result-title">Round 1</h2>
+			<p id="result-sub"></p>
+			<div class="menu-col">
+				<button class="btn primary hidden" data-action="rematch">Rematch</button>
+				<button class="btn" data-action="menu">Main Menu</button>
+			</div>
+		</section>
+
+		<!-- Pause -->
+		<section id="screen-pause" class="screen hidden">
+			<h2>Paused</h2>
+			<div class="menu-col">
+				<button class="btn primary" data-action="resume">Resume</button>
+				<button class="btn" data-action="menu">Quit to Menu</button>
+			</div>
+		</section>
+	</div>
+</main>
+
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="./src/particles.js"></script>
+<script src="./src/fighter.js"></script>
+<script src="./src/input.js"></script>
+<script src="./src/net.js"></script>
+<script src="./src/main.js"></script>
+</body>
+</html>
