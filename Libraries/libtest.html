@@ -1,24 +1,12 @@
-<!doctype html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>RPG Game</title>
-    <script type="module">
-        // 1. Import the capitalized class names from your file
-        import { Char, Party } from './RPG stuff.js';
+<script type="module">
+  import { Char, Party } from './RPG stuff.js';
 
-        // 2. Provide the arguments matching your constructor: 
-        // (name, baseHP, charclass, baseSTR, basePD, baseMD, baseINT, maxlevel, xpcurvetype, xpcurveM)
-        const guy = new Char("fuin", 100, "Warrior", 15, 10, 5, 5, 50, "linear", 1.2);
-        const guy2 = new Char("fuidn", 80, "Mage", 5, 4, 12, 18, 50, "exponential", 1.5);
+  const guy = new Char("fuin", 100, "Warrior", 15, 10, 5, 5, 50, "linear", 1.2);
+  const guy2 = new Char("fuidn", 80, "Mage", 5, 4, 12, 18, 50, "exponential", 1.5);
 
-        // 3. Combine them into a party
-        const party1 = new Party(guy, guy2);
+  const party1 = new Party(guy, guy2);
+  console.log(party1);
 
-        // Quick check in your browser console to verify it works!
-        console.log(party1);
-    </script>
-</head>
-<body>
-</body>
-</html>
+  // Expose party1 to the global window object for console testing
+  window.party1 = party1; 
+</script>
