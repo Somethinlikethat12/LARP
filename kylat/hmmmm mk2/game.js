@@ -1,862 +1,227 @@
-// === EXISTING CHARACTER/INVENTORY DATA PRESETS ===
-const partyData = {
-    cloud: { name: "CLOUD", class: "melee", atk: 84, def: 62, magic: 3, magicDef: 2, speed: 95, maxHp: 150, hp: 150, equipment: { helmet: "Empty", chest: "Empty", arms: "Empty", leggings: "Empty", boots: "Empty", amulet: "Empty", ring: "Empty", weapon: "Buster Sword", focus: "N/A", ammo: "N/A" }, grimoire: ["Fireball"], chantKnowledge: new Set(["Heed me, oh flame."]) },
-    aerith: { name: "AERITH", class: "magic", atk: 32, def: 45, magic: 4, magicDef: 3, speed: 88, maxHp: 120, hp: 120, equipment: { helmet: "Empty", chest: "Empty", arms: "Empty", leggings: "Empty", boots: "Empty", amulet: "Empty", ring: "Empty", weapon: "N/A", focus: "Fireball Scroll", ammo: "N/A" }, grimoire: ["Fireball"], chantKnowledge: new Set(["Heed me, oh flame."]) }
-};
-const tabConfigs = { one: "WEAPONS", two: "SCROLLS", three: "ARMOR", four: "KEY ITEMS" };
-let currentCharacterId = "cloud", selectedInventoryRow = null;
-
-const weaponAbilities = {
-    "Buster Sword": {
-        family: "greatsword",
-        atkBonus: 15,
-        skillDamage: 4,
-        moves: [
-            { name: "Heavy Slice", skillDamage: 4, text: "A crushing overhead cut that shreds defense." },
-            { name: "Guard Break", skillDamage: 3, text: "A fierce burst that cracks enemy guard on impact." },
-            { name: "Rending Arc", skillDamage: 5, text: "A wide swing that tears into the target's weak points." }
-        ]
-    },
-    "Iron Helmet": {
-        family: "blunt",
-        atkBonus: 8,
-        skillDamage: 2,
-        moves: [
-            { name: "Orbital Bash", skillDamage: 2, text: "A blunt strike that drives the enemy back." },
-            { name: "Steel Crash", skillDamage: 3, text: "A heavy impact designed to stun the foe." }
-        ]
-    },
-    "Fists": {
-        family: "barehand",
-        atkBonus: 0,
-        skillDamage: 2,
-        moves: [
-            { name: "Knuckle Burst", skillDamage: 2, text: "Fast, close-range pressure with no wasted motion." },
-            { name: "Tiger Rush", skillDamage: 3, text: "A rapid barrage built for speed and tempo." }
-        ]
-    },
-    "Default": {
-        family: "basic",
-        atkBonus: 0,
-        skillDamage: 2,
-        moves: [
-            { name: "Basic Strike", skillDamage: 2, text: "A reliable melee hit with no special effect." }
-        ]
-    }
-};
-
-const spellbook = {
-    Fireball: { name: "Fireball", baseDamage: 500, chant: "Heed me, oh flame.", text: "Burns the target with a focused blast of flame.", requirement: "Book of Flames" },
-    Frostbite: { name: "Frostbite", baseDamage: 420, chant: "By the frozen breath of winter.", text: "Freezes the battlefield and slows the target.", requirement: "Frostbound Ledger" },
-    ArcaneSigil: { name: "Arc Lash", baseDamage: 360, chant: "Lightning answer my call.", text: "Crackles with lightning-sealed energy.", requirement: "Arcane Sigil Ledger" },
-    Default: { name: "Spark", baseDamage: 140, chant: "light", text: "A basic elemental burst.", requirement: "None" }
-};
-
-const spellDiscovery = {
-    "Book of Flames": ["Fireball"],
-    "Frostbound Ledger": ["Frostbite"],
-    "Arcane Sigil Ledger": ["ArcaneSigil"]
-};
-
-const GRIMOIRE_PATH = "grimoire.md";
-
-// === NEW: MAP RENDERING VARIABLES ===
-const canvas = document.getElementById("gameCanvas");
-const ctx = canvas.getContext("2d");
-const diagBox = document.getElementById("map-dialogue");
-
-const TILE_SIZE = 16; // Perfectly fits your 10-20px engine scale request!
-let gameMode = "map"; // "map", "menu", "dialogue"
-
-// Player Settings
-const playerImg = new Image();
-playerImg.src = "player.png"; // Links to your image asset
-let player = { x: 2, y: 2 }; // Grid tile coordinates
-
-// Interactive Boss NPC Setting
-let boss = { x: 18, y: 12, active: true };
-
-const BATTLE_PARTY_CAP = 5;
-const PARTY_SOFT_CAP = 5;
-
-const battleState = {
-    active: false,
-    enemy: null,
-    partyQueue: [],
-    turnOrder: [],
-    currentActorId: null,
-    playerGuard: false,
-    round: 1,
-    log: "Choose an action."
-};
-
-const enemyTemplates = [
-    { name: "MAD SLIME", type: "wild", hp: 44, atk: 10, def: 18, magicDef: 8, magic: 1 },
-    { name: "BLOOD WOLF", type: "wild", hp: 58, atk: 13, def: 20, magicDef: 9, magic: 2 },
-    { name: "MAGE THORN", type: "wild", hp: 64, atk: 18, def: 24, magicDef: 12, magic: 3 },
-    { name: "SEPHIROTH", type: "boss", hp: 110, atk: 24, def: 150, magicDef: 18, magic: 5 }
-];
-
-function randomBetween(min, max) {
-    return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-
-function getCurrentPartyMember() {
-    return partyData[currentCharacterId] || partyData.cloud;
-}
-
-function getLivingPartyMembers() {
-    const living = Object.entries(partyData)
-        .filter(([, member]) => member.hp > 0)
-        .map(([id, member]) => ({ id, ...member }));
-
-    return living.slice(0, PARTY_SOFT_CAP);
-}
-
-function getCurrentBattleActor() {
-    if (!battleState.turnOrder.length) return null;
-    return battleState.turnOrder.find((entity) => entity.battleId === battleState.currentActorId) || battleState.turnOrder[0];
-}
-
-function getBattleTurnOrder() {
-    const party = getLivingPartyMembers().map((member) => ({
-        ...member,
-        battleId: `party:${member.id}`,
-        side: "party",
-        name: member.name
-    }));
-
-    const enemies = battleState.enemy ? [{
-        ...battleState.enemy,
-        battleId: "enemy:0",
-        side: "enemy",
-        name: battleState.enemy.name
-    }] : [];
-
-    return [...party, ...enemies].sort((a, b) => (b.speed || 0) - (a.speed || 0));
-}
-
-function getEquippedWeapon(actor) {
-    if (!actor || !actor.equipment) return "Fists";
-    return actor.equipment.weapon && actor.equipment.weapon !== "N/A" && actor.equipment.weapon !== "Empty" ? actor.equipment.weapon : "Fists";
-}
-
-function getEquippedFocus(actor) {
-    if (!actor || !actor.equipment) return "Default";
-    return actor.equipment.focus && actor.equipment.focus !== "N/A" && actor.equipment.focus !== "Empty" ? actor.equipment.focus : "Default";
-}
-
-function hasMagicFocus(actor) {
-    const focus = actor?.equipment?.focus;
-    return Boolean(focus && focus !== "N/A" && focus !== "Empty" && focus !== "Default");
-}
-
-function getWeaponAbility(actor) {
-    const weaponName = getEquippedWeapon(actor);
-    const ability = weaponAbilities[weaponName] || weaponAbilities.Default;
-    return ability;
-}
-
-function getSpellAbility(actor) {
-    const spellName = getEquippedFocus(actor);
-    return spellbook[spellName] || spellbook.Default;
-}
-
-function normaliseChant(chant) {
-    return String(chant || "").trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-function getSpellForChant(actor, chantText) {
-    const input = normaliseChant(chantText);
-    if (!input) return null;
-
-    const available = Array.from(actor?.grimoire || []);
-    for (const spellName of available) {
-        const spell = spellbook[spellName];
-        if (spell && normaliseChant(spell.chant) === input) {
-            return spell;
-        }
-    }
-
-    for (const [spellName, spell] of Object.entries(spellbook)) {
-        if (spell && normaliseChant(spell.chant) === input && actor?.chantKnowledge?.has(spell.chant.trim())) {
-            return spell;
-        }
-    }
-
-    return null;
-}
-
-function getVisibleMagicValue(actor) {
-    const magicValue = Number(actor?.magic || 0);
-    return magicValue * 10;
-}
-
-function learnSpellFromBook(actor, bookTitle) {
-    if (!actor || !spellDiscovery[bookTitle]) return false;
-    let learned = false;
-    spellDiscovery[bookTitle].forEach((spellName) => {
-        if (!actor.grimoire.includes(spellName)) {
-            actor.grimoire.push(spellName);
-            learned = true;
-        }
-        if (spellbook[spellName]?.chant) {
-            actor.chantKnowledge.add(spellbook[spellName].chant.trim());
-        }
-    });
-    return learned;
-}
-
-function getWeaponMove(actor, moveName = null) {
-    const weapon = getWeaponAbility(actor);
-    const moves = weapon.moves && weapon.moves.length ? weapon.moves : [{ name: "Basic Strike", skillDamage: weapon.skillDamage || 2, text: "A basic blow." }];
-    if (!moveName) return moves[0];
-    return moves.find((move) => move.name === moveName) || moves[0];
-}
-
-function getAbilityOptions(actor) {
-    const baseMoves = getWeaponAbility(actor).moves && getWeaponAbility(actor).moves.length ? getWeaponAbility(actor).moves : [{ name: "Basic Strike", skillDamage: getWeaponAbility(actor).skillDamage || 2, text: "A basic blow." }];
-    return [
-        { name: "Basic Attack", skillDamage: 2, text: "A straightforward strike with your weapon." },
-        ...baseMoves,
-        { name: "Guard", skillDamage: 0, text: "Brace for the next hit." },
-        { name: "Flee", skillDamage: 0, text: "Attempt a retreat." }
-    ];
-}
-
-function getScaledEnemyHp(template) {
-    const baseHp = template.hp || 30;
-    const partyPower = Object.values(partyData).reduce((highest, member) => {
-        const weaponPower = (member.atk || 0) + (getWeaponAbility(member).atkBonus || 0) + (getWeaponAbility(member).skillDamage || 2) * 20;
-        const spellPower = (spellbook.Fireball?.baseDamage || 120) * (member.magic || 1);
-        return Math.max(highest, weaponPower, spellPower);
-    }, 0);
-
-    const scaledHp = Math.ceil(Math.max(baseHp * 10, baseHp + partyPower * 0.45));
-    if (template.type === "boss") {
-        return Math.max(scaledHp, 900);
-    }
-    return scaledHp;
-}
-
-function calculateWeaponDamage(actor, enemy, move) {
-    const weapon = getWeaponAbility(actor);
-    const offense = actor.atk + (weapon.atkBonus || 0);
-    const skill = move.skillDamage || weapon.skillDamage || 1;
-    return Math.max(0, Math.round(skill * offense - (enemy.def || 0)));
-}
-
-function renderRosterLists() {
-    const partyList = document.getElementById("battle-party-list");
-    const enemyList = document.getElementById("battle-enemy-list");
-    if (!partyList || !enemyList) return;
-
-    const livingParty = getLivingPartyMembers();
-    partyList.innerHTML = livingParty.map((member) => {
-        const isActive = `party:${member.id}` === battleState.currentActorId;
-        return `
-            <div class="turn-card ${isActive ? "active-turn" : ""} ${member.hp <= 0 ? "down" : ""}">
-                <div class="turn-name">${member.name}</div>
-                <div class="turn-meta">SPD ${member.speed || 0} · HP ${member.hp}/${member.maxHp}</div>
-            </div>
-        `;
-    }).join("");
-
-    if (battleState.enemy) {
-        const enemyActive = battleState.currentActorId === "enemy:0";
-        enemyList.innerHTML = `
-            <div class="turn-card enemy-card ${enemyActive ? "active-turn" : ""}">
-                <div class="turn-name">${battleState.enemy.name}</div>
-                <div class="turn-meta">HP ${battleState.enemy.hp}/${battleState.enemy.maxHp} · DEF ${battleState.enemy.def || 0}</div>
-            </div>
-        `;
-    }
-}
-
-function populateActMenu() {
-    const menu = document.getElementById("act-menu-rows");
-    if (!menu) return;
-
-    const current = getCurrentBattleActor();
-    let actor = null;
-
-    if (current && current.side === "party" && current.id && partyData[current.id]) {
-        actor = partyData[current.id];
-    } else if (partyData[currentCharacterId]) {
-        actor = partyData[currentCharacterId];
-    } else {
-        const firstParty = getLivingPartyMembers()[0];
-        actor = firstParty ? partyData[firstParty.id] : null;
-    }
-
-    if (!actor) {
-        menu.innerHTML = "";
-        return;
-    }
-
-    const moves = getAbilityOptions(actor).map((move) => {
-        if (move.name === "Guard") return { action: "guard", move: move.name, text: move.text };
-        if (move.name === "Flee") return { action: "flee", move: move.name, text: move.text };
-        return { action: "attack", move: move.name, text: move.text };
-    });
-
-    menu.innerHTML = moves.map((move) => `
-        <tr data-action="${move.action}" data-move="${move.move}">
-            <td>${move.move}</td>
-            <td>${move.text}</td>
-        </tr>
-    `).join("");
-
-    menu.querySelectorAll("tr").forEach((row) => {
-        row.addEventListener("click", () => {
-            const windowAct = document.getElementById("window-act");
-            if (windowAct) windowAct.style.display = "none";
-            resolveBattleAction(row.dataset.action, row.dataset.move);
-        });
-    });
-}
-
-function resolveSelectedCombatAction() {
-    return "attack";
-}
-
-function refreshChantInput() {
-    const chantInput = document.getElementById("chant-input");
-    if (!chantInput) return;
-
-    const current = getCurrentBattleActor();
-    const canChant = current && current.side === "party" ? hasMagicFocus(partyData[current.id]) : false;
-
-    chantInput.disabled = !canChant;
-    chantInput.placeholder = canChant ? "Type the spell chant here..." : "Requires magic focus";
-}
-
-function updateCombatUI() {
-    const combatScreen = document.getElementById("combat-screen");
-    if (!combatScreen || !battleState.active || !battleState.enemy) return;
-
-    const current = getCurrentBattleActor() || getCurrentPartyMember();
-    const enemy = battleState.enemy;
-    const currentMember = current && current.side === "party" ? partyData[current.id] : current;
-
-    document.getElementById("battle-player-name").textContent = currentMember ? currentMember.name : "PARTY";
-    document.getElementById("battle-enemy-name").textContent = enemy.name;
-    document.getElementById("battle-enemy-label").textContent = enemy.name;
-    document.getElementById("battle-enemy-type").textContent = enemy.type === "boss" ? "BOSS ENEMY" : "WILD ENCOUNTER";
-    document.getElementById("battle-log").textContent = battleState.log;
-    document.getElementById("battle-turn-banner").textContent = `${currentMember ? currentMember.name : enemy.name}'s turn`;
-
-    const playerHpPercent = ((currentMember?.hp ?? 0) / (currentMember?.maxHp ?? 1)) * 100;
-    const enemyHpPercent = (enemy.hp / enemy.maxHp) * 100;
-    document.getElementById("player-hp-fill").style.width = `${Math.max(0, playerHpPercent)}%`;
-    document.getElementById("enemy-hp-fill").style.width = `${Math.max(0, enemyHpPercent)}%`;
-    document.getElementById("player-hp-text").textContent = `${currentMember ? currentMember.hp : 0} / ${currentMember ? currentMember.maxHp : 1} HP`;
-    document.getElementById("enemy-hp-text").textContent = `${enemy.hp} / ${enemy.maxHp} HP`;
-
-    populateActMenu();
-    refreshChantInput();
-    renderRosterLists();
-}
-
-function advanceCombatTurn() {
-    if (!battleState.active) return;
-
-    const queue = getBattleTurnOrder();
-    battleState.turnOrder = queue;
-    if (!queue.length) {
-        battleState.active = false;
-        return;
-    }
-
-    const currentIndex = queue.findIndex((entity) => entity.battleId === battleState.currentActorId);
-    const nextActor = queue[(currentIndex + 1) % queue.length] || queue[0];
-    battleState.currentActorId = nextActor.battleId;
-    battleState.log = `${nextActor.name} takes the next turn.`;
-    updateCombatUI();
-
-    if (nextActor.side === "enemy") {
-        const enemyActor = nextActor;
-        setTimeout(() => {
-            if (!battleState.active || battleState.currentActorId !== enemyActor.battleId) return;
-            const target = getLivingPartyMembers()[0] || partyData.cloud;
-            const attackPower = enemyActor.atk + randomBetween(0, 8);
-            const incomingDamage = Math.max(0, attackPower - Math.floor((target.def || 0) / 6));
-            target.hp = Math.max(0, target.hp - incomingDamage);
-            battleState.log = `${enemyActor.name} strikes ${target.name} for ${incomingDamage} damage.`;
-            updateCombatUI();
-            if (target.hp <= 0) {
-                const aliveQueue = getLivingPartyMembers();
-                if (!aliveQueue.length) {
-                    battleState.active = false;
-                    battleState.log = "The party has fallen. The battle ends.";
-                    updateCombatUI();
-                    return;
-                }
-            }
-            advanceCombatTurn();
-        }, 350);
-    }
-}
-
-function showCombatScreen() {
-    const combatScreen = document.getElementById("combat-screen");
-    if (!combatScreen) return;
-    combatScreen.style.display = "flex";
-    requestAnimationFrame(() => combatScreen.classList.add("show"));
-}
-
-function hideCombatScreen() {
-    const combatScreen = document.getElementById("combat-screen");
-    if (!combatScreen) return;
-    combatScreen.classList.remove("show");
-    setTimeout(() => {
-        combatScreen.style.display = "none";
-    }, 220);
-}
-
-function resetBattleState() {
-    battleState.active = false;
-    battleState.enemy = null;
-    battleState.partyQueue = [];
-    battleState.turnOrder = [];
-    battleState.currentActorId = null;
-    battleState.playerGuard = false;
-    battleState.round = 1;
-    battleState.log = "Choose an action.";
-}
-
-function startBattle(enemyName = null, enemyType = "wild") {
-    if (battleState.active) return;
-    resetBattleState();
-
-    const enemyTemplate = enemyTemplates.find((enemy) => enemy.name === enemyName) || enemyTemplates[Math.floor(Math.random() * (enemyTemplates.length - 1))];
-    const scaledHp = getScaledEnemyHp(enemyTemplate);
-    const enemy = {
-        name: enemyName || enemyTemplate.name,
-        type: enemyType === "boss" ? "boss" : enemyTemplate.type,
-        maxHp: enemyName === "SEPHIROTH" || enemyType === "boss" ? Math.max(scaledHp, 900) : scaledHp,
-        hp: enemyName === "SEPHIROTH" || enemyType === "boss" ? Math.max(scaledHp, 900) : scaledHp,
-        atk: enemyName === "SEPHIROTH" || enemyType === "boss" ? 24 : enemyTemplate.atk,
-        def: enemyName === "SEPHIROTH" || enemyType === "boss" ? 150 : (enemyTemplate.def || 40),
-        magicDef: enemyName === "SEPHIROTH" || enemyType === "boss" ? 18 : (enemyTemplate.magicDef || 10),
-        speed: enemyName === "SEPHIROTH" || enemyType === "boss" ? 96 : 80,
-        isBoss: enemyType === "boss" || enemyName === "SEPHIROTH"
+class Char {
+  constructor(name, baseHP, charclass, baseSTR, basePD, baseMD, baseINT, maxlevel, xpcurvetype, xpcurveM) {
+    this.name = name;
+    this.class = charclass;
+    this.baseHP = baseHP;
+    this.baseINT = baseINT;
+    this.baseMD = baseMD;
+    this.currentxp = 0;
+    this.maxlevel = maxlevel;
+    this.baseSTR = baseSTR;
+    this.basePD = basePD;
+    this.xpcurvetype = xpcurvetype;
+    this.xpcurveM = xpcurveM;
+    this.currentlvl = 1;
+    
+    this.equipment = {
+      head: null,
+      leftHand: null,
+      body: null,
+      rightHand: null,
+      misc: Array(12).fill(null) 
     };
-
-    battleState.active = true;
-    battleState.enemy = enemy;
-    battleState.playerGuard = false;
-    battleState.round = 1;
-    battleState.turnOrder = getBattleTurnOrder();
-    battleState.currentActorId = battleState.turnOrder[0]?.battleId || `party:${currentCharacterId}`;
-    battleState.log = `${enemy.name} lunges into battle! ${battleState.turnOrder[0]?.name || "The party"} acts first.`;
-
-    document.getElementById("window-map").style.display = "none";
-    document.getElementById("window-inventory").style.display = "none";
-    document.getElementById("window-character").style.display = "none";
-    showCombatScreen();
-    gameMode = "combat";
-    updateCombatUI();
+  }
 }
 
-function resolveEnemyTurn() {
-    if (!battleState.active || !battleState.enemy) return;
-
-    const current = getCurrentBattleActor();
-    if (!current || current.side !== "enemy") return;
-
-    const target = getLivingPartyMembers()[0] || partyData.cloud;
-    const attackPower = current.atk + randomBetween(0, 8);
-    let incomingDamage = attackPower - Math.floor((target.def || 0) / 6);
-
-    if (battleState.playerGuard) {
-        incomingDamage = Math.max(2, Math.floor(incomingDamage * 0.35));
-        battleState.playerGuard = false;
-        battleState.log = `${current.name} hits through your guard for ${incomingDamage} damage.`;
-    } else {
-        battleState.log = `${current.name} strikes ${target.name} for ${incomingDamage} damage.`;
-    }
-
-    target.hp = Math.max(0, target.hp - incomingDamage);
-    updateCombatUI();
-
-    if (target.hp <= 0) {
-        const aliveQueue = getLivingPartyMembers();
-        if (!aliveQueue.length) {
-            battleState.active = false;
-            target.hp = target.maxHp;
-            battleState.log = `${target.name} was defeated. The party retreats to the map.`;
-            hideCombatScreen();
-            document.getElementById("window-map").style.display = "flex";
-            gameMode = "map";
-            return;
-        }
-    }
+class Party {
+  constructor(...char) {
+    this.members = char;
+  }
 }
 
-function endBattle({ victory = false, escaped = false, bossDefeated = false } = {}) {
-    battleState.active = false;
-    battleState.enemy = null;
-    battleState.turnOrder = [];
-    battleState.currentActorId = null;
-    battleState.playerGuard = false;
-
-    if (victory) {
-        battleState.log = bossDefeated ? "Boss defeated! The arena is yours." : "Victory! The encounter is over.";
-    } else if (escaped) {
-        battleState.log = "The party escapes the encounter.";
-    } else {
-        battleState.log = "The battle ends.";
+function givexp(char, xpammount) {
+  if (char.maxlevel > char.currentlvl) {
+    char.currentxp += xpammount;
+    
+    while (char.xpcurvetype === "linear" && char.currentlvl * char.xpcurveM <= char.currentxp && char.currentlvl < char.maxlevel) {
+      char.currentlvl++;
     }
-
-    hideCombatScreen();
-    document.getElementById("window-map").style.display = "flex";
-    gameMode = "map";
-    const chantInput = document.getElementById("chant-input");
-    if (chantInput) chantInput.value = "";
-    updateCombatUI();
-    drawMap();
+    while (char.xpcurvetype === "exponential" && Math.pow(char.currentlvl, char.xpcurveM) <= char.currentxp && char.currentlvl < char.maxlevel) {
+      char.currentlvl++;
+    }
+  }
 }
 
-function resolveBattleAction(action, moveNameOverride = null) {
-    if (!battleState.active || !battleState.enemy) return;
+class MenuManager {
+  static currentMenu = null;
 
-    const current = getCurrentBattleActor();
-    if (!current || current.side !== "party") return;
-
-    const actor = partyData[current.id];
-    const enemy = battleState.enemy;
-    const moveName = moveNameOverride || document.querySelector(".act-option.selected")?.dataset.move || "Basic Attack";
-    const selectedAction = action === "attack" ? resolveSelectedCombatAction() : action;
-    const actualAction = moveNameOverride ? (action || "attack") : selectedAction;
-    const move = getWeaponMove(actor, moveName);
-    const chantInput = document.getElementById("chant-input")?.value || "";
-
-    if (actualAction === "magic") {
-        if (!hasMagicFocus(actor)) {
-            battleState.log = `${actor.name} needs a magic focus to chant.`;
-            updateCombatUI();
-            return;
-        }
-
-        if (!chantInput.trim()) {
-            battleState.log = `${actor.name} tries to chant, but the phrase is empty.`;
-            updateCombatUI();
-            if (battleState.active) advanceCombatTurn();
-            return;
-        }
-
-        const knownSpell = getSpellForChant(actor, chantInput);
-        if (!knownSpell) {
-            battleState.log = `${actor.name} chants "${chantInput}" but the phrase is unfamiliar.`;
-            updateCombatUI();
-            if (battleState.active) advanceCombatTurn();
-            return;
-        }
-
-        const realMagic = Number(actor.magic || 1);
-        const spellDamage = Math.max(0, Math.round((knownSpell.baseDamage || 120) * realMagic - (enemy.magicDef || 0) * 2));
-        enemy.hp = Math.max(0, enemy.hp - spellDamage);
-        const chantField = document.getElementById("chant-input");
-        if (chantField) chantField.value = "";
-        battleState.log = `${actor.name} chants "${knownSpell.chant}" and casts ${knownSpell.name} for ${spellDamage} damage.`;
-    } else if (actualAction === "guard") {
-        battleState.playerGuard = true;
-        battleState.log = `${actor.name} braces for impact.`;
-    } else if (actualAction === "flee") {
-        if (Math.random() < 0.6) {
-            endBattle({ escaped: true });
-            return;
-        }
-        battleState.log = `${actor.name} fails to escape!`;
-    } else {
-        const damage = calculateWeaponDamage(actor, enemy, move);
-        enemy.hp = Math.max(0, enemy.hp - damage);
-        battleState.log = `${actor.name} uses ${move.name} for ${damage} damage. ${move.text}`;
+  static setActive(menu) {
+    if (MenuManager.currentMenu && MenuManager.currentMenu !== menu) {
+      MenuManager.currentMenu.close();
     }
+    MenuManager.currentMenu = menu;
+  }
 
-    updateCombatUI();
-
-    if (enemy.hp <= 0) {
-        battleState.log = `${enemy.name} is defeated!`;
-        if (enemy.isBoss) {
-            boss.active = false;
-            endBattle({ victory: true, bossDefeated: true });
-            return;
-        }
-        endBattle({ victory: true });
-        return;
+  static clearActive(menu) {
+    if (MenuManager.currentMenu === menu) {
+      MenuManager.currentMenu = null;
     }
-
-    if (battleState.active) {
-        advanceCombatTurn();
-    }
+  }
 }
 
+class Menu {
+  constructor(toggleKey) {
+    this.isOpen = false;
+    this.toggleKey = toggleKey; 
+    
+    this.menuElement = document.createElement('div');
+    this.menuElement.className = "menu-window hidden"; 
+    
+    this.tabContainer = document.createElement('div');
+    this.tabContainer.className = "menu-tabs-header";
+    this.menuElement.appendChild(this.tabContainer);
 
-// World Matrix Map Array Setup
-// 0 = Walkable, 1 = Solid Wall, 2 = Random Encounter Tall Grass, 3 = Boss Block Area
-const currentMap = [
-    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-    [1,0,0,2,2,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-    [1,0,0,2,2,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
-];
+    this.contentContainer = document.createElement('div');
+    this.contentContainer.className = "menu-content-body";
+    this.menuElement.appendChild(this.contentContainer);
 
-// Injection rendering matrix loop
-function drawMap() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    document.body.appendChild(this.menuElement);
 
-    for (let r = 0; r < currentMap.length; r++) {
-        for (let c = 0; c < currentMap[r].length; c++) {
-            let tile = currentMap[r][c];
-            if (tile === 1) {
-                ctx.fillStyle = "rgb(40, 20, 20)"; // Hard Walls (Replace with bricks later)
-            } else if (tile === 2) {
-                ctx.fillStyle = "rgb(20, 60, 20)"; // Tall Battle Encounter Grass patches
-            } else {
-                ctx.fillStyle = "rgb(15, 5, 5)"; // standard open path floor floors
-            }
-            ctx.fillRect(c * TILE_SIZE, r * TILE_SIZE, TILE_SIZE, TILE_SIZE);
-        }
-    }
-
-    // Draw Boss NPC Entity if active flag is high
-    if (boss.active) {
-        ctx.fillStyle = "rgb(200, 50, 50)"; // Red box placeholder (Replace with boss.png later)
-        ctx.fillRect(boss.x * TILE_SIZE, boss.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
-    }
-
-    // Draw Player configuration using loaded source files
-    if (playerImg.complete && playerImg.naturalWidth !== 0) {
-        ctx.drawImage(playerImg, player.x * TILE_SIZE, player.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
-    } else {
-        ctx.fillStyle = "rgb(0, 255, 100)"; // Green box fall-back if file is loading/missing
-        ctx.fillRect(player.x * TILE_SIZE, player.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
-    }
-}
-
-// Intercept movement mechanics
-function movePlayer(dx, dy) {
-    if (gameMode !== "map") return;
-
-    let targetX = player.x + dx;
-    let targetY = player.y + dy;
-
-    // Boundary constraints
-    if (targetY >= 0 && targetY < currentMap.length && targetX >= 0 && targetX < currentMap[0].length) {
-        let destinationTile = currentMap[targetY][targetX];
-
-        // Process Boss Object Contact Collision Check
-        if (targetX === boss.x && targetY === boss.y && boss.active) {
-            startBattle("SEPHIROTH", "boss");
-            return;
-        }
-
-        // Standard Walkable verification limits
-        if (destinationTile !== 1) {
-            player.x = targetX;
-            player.y = targetY;
-
-            // Random Battle roll trigger if walking inside deep tall grass cells
-            if (destinationTile === 2) {
-                if (Math.random() < 0.22) {
-                    startBattle();
-                    return;
-                }
-            }
-        }
-    }
-    drawMap();
-}
-
-function triggerDialogue(text) {
-    gameMode = "dialogue";
-    diagBox.textContent = text;
-    diagBox.style.display = "block";
-}
-
-function closeDialogue() {
-    gameMode = "map";
-    diagBox.style.display = "none";
-}
-
-// === WINDOW MANAGEMENT KEYBOARD SHORTCUT REGISTRATION ===
-window.addEventListener("keydown", (e) => {
-    const mapWin = document.getElementById("window-map");
-    const invWin = document.getElementById("window-inventory");
-    const charWin = document.getElementById("window-character");
-    const combatScreen = document.getElementById("combat-screen");
-
-    const key = e.key.toLowerCase();
-
-    if (gameMode === "dialogue") {
-        if (key === "enter" || key === " " || key === "e") closeDialogue();
-        return;
-    }
-
-    if (gameMode === "combat") {
-        if (key === "m") {
-            gameMode = "map";
-            combatScreen.style.display = "none";
-            mapWin.style.display = "flex";
-            drawMap();
-        }
-        return;
-    }
-
-    if (key === "m") {
-        gameMode = "map"; mapWin.style.display = "flex"; invWin.style.display = "none"; charWin.style.display = "none";
-        drawMap();
-    }
-    if (key === "i") {
-        gameMode = "menu"; invWin.style.display = "flex"; mapWin.style.display = "none"; charWin.style.display = "none";
-    }
-    if (key === "c") {
-        gameMode = "menu"; charWin.style.display = "flex"; mapWin.style.display = "none"; invWin.style.display = "none";
-        drawCharacterUI();
-    }
-
-    if (key === "w" || e.key === "ArrowUp")    movePlayer(0, -1);
-    if (key === "s" || e.key === "ArrowDown")  movePlayer(0, 1);
-    if (key === "a" || e.key === "ArrowLeft")  movePlayer(-1, 0);
-    if (key === "d" || e.key === "ArrowRight") movePlayer(1, 0);
-});
-
-// === RESTORED ORIGINAL FUNCTIONS ===
-const titleEl = document.getElementById("menu-title");
-const rows = document.querySelectorAll("#inventory-rows tr");
-const buttons = document.querySelectorAll(".but");
-
-function filterMenu(categoryId) {
-    titleEl.textContent = tabConfigs[categoryId] || "ITEMS";
-    rows.forEach(row => {
-        row.style.display = row.getAttribute("data-category") === categoryId ? "" : "none";
+    window.addEventListener("keydown", (e) => {
+      if (this.toggleKey && e.key === this.toggleKey) this.toggle();
     });
-}
-buttons.forEach(button => {
-    button.addEventListener("click", () => {
-        buttons.forEach(b => b.classList.remove("active"));
-        button.classList.add("active");
-        filterMenu(button.id);
-    });
-});
+  }
 
-function drawCharacterUI() {
-    const char = partyData[currentCharacterId];
-    document.getElementById("char-display-name").textContent = char.name;
-    document.getElementById("stat-atk").textContent = char.atk;
-    document.getElementById("stat-def").textContent = char.def;
-    document.getElementById("stat-magic").textContent = String(getVisibleMagicValue(char));
-    document.querySelectorAll(".eq-slot").forEach(slotEl => {
-        const slotType = slotEl.getAttribute("data-slot");
-        const eqValue = char.equipment[slotType];
-        const valSpan = slotEl.querySelector(".slot-val");
-        valSpan.textContent = eqValue;
-        if (eqValue === "N/A") { slotEl.style.display = "none"; } else { slotEl.style.display = "flex"; valSpan.style.color = eqValue === "Empty" ? "#aaa" : "#00ff66"; }
-    });
-}
+  toggle() {
+    if (this.isOpen) this.close();
+    else this.open();
+  }
 
-rows.forEach(row => {
-    row.addEventListener("click", () => {
-        selectedInventoryRow = row;
-        const itemName = row.cells[0].textContent;
-        const modal = document.getElementById("confirm-modal");
-        document.getElementById("modal-text").textContent = `Equip ${itemName} to who?`;
-        const optContainer = document.getElementById("modal-target-options");
-        optContainer.innerHTML = ""; 
-        Object.keys(partyData).forEach(charKey => {
-            const btn = document.createElement("button");
-            btn.textContent = partyData[charKey].name;
-            btn.addEventListener("click", () => executeEquipmentAction(charKey));
-            optContainer.appendChild(btn);
-        });
-        modal.style.display = "flex";
-    });
-});
+  open() {
+    MenuManager.setActive(this); 
+    this.isOpen = true;
+    this.menuElement.classList.remove('hidden');
+  }
 
-function executeEquipmentAction(charKey) {
-    const char = partyData[charKey];
-    const itemType = selectedInventoryRow.getAttribute("data-type"); 
-    const itemName = selectedInventoryRow.cells[0].textContent;
-    let targetSlot = itemType;
-    if (itemType === "armor" && itemName.toLowerCase().includes("helmet")) targetSlot = "helmet";
+  close() {
+    this.isOpen = false;
+    this.menuElement.classList.add('hidden');
+    MenuManager.clearActive(this);
+  }
 
-    if (char.equipment[targetSlot] === "N/A") {
-        alert(`${char.name} cannot equip this item type!`);
-    } else {
-        char.equipment[targetSlot] = itemName;
-        let qty = parseInt(selectedInventoryRow.getAttribute("data-qty"), 10);
-        qty--;
-        selectedInventoryRow.setAttribute("data-qty", qty);
-        selectedInventoryRow.querySelector(".qty-display").textContent = `x${qty}`;
-    }
-    document.getElementById("confirm-modal").style.display = "none";
-}
-
-document.querySelectorAll(".char-tab").forEach(tab => {
-    tab.addEventListener("click", () => {
-        currentCharacterId = tab.dataset.char;
-        document.querySelectorAll(".char-tab").forEach(btn => {
-            btn.classList.toggle("active", btn === tab);
-        });
-        drawCharacterUI();
-    });
-});
-
-document.getElementById("btn-cancel").addEventListener("click", () => {
-    document.getElementById("confirm-modal").style.display = "none";
-});
-
-function openActMenu() {
-    const menu = document.getElementById("window-act");
-    const inventory = document.getElementById("window-inventory");
-    const character = document.getElementById("window-character");
-    const combatScreen = document.getElementById("combat-screen");
-
-    if (inventory) inventory.style.display = "none";
-    if (character) character.style.display = "none";
-    if (combatScreen) combatScreen.style.zIndex = "1000";
-    if (!menu) return;
-
-    const current = getCurrentBattleActor();
-    if (current && current.side === "party" && current.id && partyData[current.id]) {
-        currentCharacterId = current.id;
+  addTab(tabInstance) {
+    this.tabContainer.appendChild(tabInstance.button);
+    
+    if (this.tabContainer.children.length === 1) {
+      tabInstance.select(this.contentContainer);
     }
 
-    menu.style.display = "flex";
-    menu.style.zIndex = "4000";
-    populateActMenu();
+    tabInstance.button.addEventListener('click', () => {
+      this.contentContainer.innerHTML = '';
+      tabInstance.select(this.contentContainer);
+    });
+  }
 }
 
-document.querySelectorAll(".battle-action").forEach(button => {
-    button.addEventListener("click", () => resolveBattleAction(button.dataset.action));
-});
+class MenuTab {
+  constructor(name, renderFunction) {
+    this.name = name;
+    this.renderFunction = renderFunction; 
 
-document.getElementById("act-button")?.addEventListener("click", openActMenu);
+    this.button = document.createElement('button');
+    this.button.className = "menu-tab-btn";
+    this.button.innerText = name;
+  }
 
-document.getElementById("chant-input")?.addEventListener("keydown", (event) => {
-    const activeBattleActor = getCurrentBattleActor();
-    const isActivePartyMage = activeBattleActor && activeBattleActor.side === "party" && hasMagicFocus(partyData[activeBattleActor.id]);
+  select(container) {
+    this.renderFunction(container);
+  }
+}
 
-    if (event.key === "Enter" && isActivePartyMage) {
-        event.preventDefault();
-        resolveBattleAction("magic");
-    }
-});
+class CharacterMenu extends Menu {
+  constructor(toggleKey, partyInstance) {
+    super(toggleKey);
+    this.party = partyInstance;
+    this.buildCharacterTabs();
+  }
 
-filterMenu("one");
-drawMap();
-drawCharacterUI();
+  buildCharacterTabs() {
+    this.party.members.forEach(character => {
+      const charTab = new MenuTab(character.name, (container) => {
+        this.renderCharacterSubMenu(container, character);
+      });
+      this.addTab(charTab);
+    });
+  }
+
+  renderCharacterSubMenu(container, character) {
+    // REMOVED ALL BACKSLASHES TO FIX HTML RENDERING
+    container.innerHTML = `
+      <div class="character-equipment-screen">
+        
+        <div class="char-header">
+          <h2>${character.name}</h2>
+          <span class="char-class">Lvl ${character.currentlvl} ${character.class || 'No Class'}</span>
+        </div>
+
+        <div class="paperdoll-container">
+          <div class="slot-label label-head">Head Slot</div>
+          <div class="equip-slot slot-head" id="slot-head-${character.name}">
+            ${character.equipment.head || '[ Head Item ]'}
+          </div>
+
+          <div class="slot-label label-left">Left Hand</div>
+          <div class="equip-slot slot-left-hand" id="slot-left-${character.name}">
+            ${character.equipment.leftHand || '[ Left Hand ]'}
+          </div>
+
+          <div class="char-sprite-box">
+            <div class="char-body-visual">👤</div>
+            <div class="equip-slot slot-body" id="slot-body-${character.name}">
+              ${character.equipment.body || '[ Body Armor ]'}
+            </div>
+          </div>
+
+          <div class="slot-label label-right">Right Hand</div>
+          <div class="equip-slot slot-right-hand" id="slot-right-${character.name}">
+            ${character.equipment.rightHand || '[ Right Hand ]'}
+          </div>
+        </div>
+
+        <div class="misc-equipment-section">
+          <div class="misc-label">Misc Equipables / Armor</div>
+          <div class="misc-grid">
+            ${character.equipment.misc.map((item, index) => `
+              <div class="misc-slot" id="slot-misc-index-{character.name}">
+                \${item || ''}
+              </div>
+            `).join('')}
+          </div>
+        </div>
+
+      </div>
+    `;
+
+    container.querySelectorAll('.equip-slot, .misc-slot').forEach(slot => {
+      slot.addEventListener('click', (e) => {
+        console.log(`Clicked slot ID: ${e.currentTarget.id} for character: ${character.name}`);
+      });
+    });
+  }
+}
+
+// Fix and restore your game map array data loop structure
+const first = document.getElementById("first");
+if (first) {
+  const map1 = [,
+ ,
+    [1,1,1,1,1,1,0,0,0,0]
+  ];
+
+  const htmlString = map1.map(row => `
+    <div class="tile-row">
+      ${row.map(cell => `<div class="tile type-\${cell}"></div>`).join('')}
+    </div>
+  `).join('');
+  first.innerHTML = htmlString;
+}
+
+// Initialize Menu Instances
+const inv = new Menu('i'); 
+let guy = new Char("h", 100, "Warrior", 10, 10, 5, 5, 50, "linear", 10);
+let guy2 = new Char("apple", 80, "Mage", 4, 5, 12, 15, 50, "exponential", 2);
+let guy3 = new Char("orange", 90, "Rogue", 8, 7, 6, 7, 50, "linear", 8);
+let guy4 = new Char("pear", 110, "Cleric", 6, 9, 10, 8, 50, "linear", 9);
+
+let party1 = new Party(guy, guy2, guy3, guy4);
+const cm = new CharacterMenu("c", party1);
