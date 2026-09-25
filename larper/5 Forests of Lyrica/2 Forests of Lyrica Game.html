@@ -1,0 +1,165 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>The Forests of Lyrica</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Space+Grotesk:wght@500;700&display=swap');
+        :root { --ink:#f5f0df; --muted:#a6ae9d; --green:#b7d37a; --red:#f07167; --panel:#17221f; --line:#354941; }
+        * { box-sizing:border-box; }
+        body { margin:0; min-height:100vh; display:grid; place-items:center; color:var(--ink); background:#09110f; font-family:'DM Mono', monospace; }
+        body:before { content:""; position:fixed; inset:0; opacity:.22; pointer-events:none; background:linear-gradient(135deg,#173b31 0 1px,transparent 1px 24px),linear-gradient(45deg,#173b31 0 1px,transparent 1px 24px); background-size:34px 34px; }
+        #game { width:min(920px,94vw); margin:30px 0; background:rgba(13,23,20,.96); border:1px solid var(--line); box-shadow:0 24px 70px #0008; }
+        header { padding:22px 26px 16px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:end; gap:20px; }
+        h1 { margin:0; font:700 clamp(1.5rem,4vw,2.5rem) 'Space Grotesk',sans-serif; letter-spacing:0; }
+        .eyebrow { color:var(--green); font-size:.7rem; letter-spacing:.14em; text-transform:uppercase; margin:0 0 7px; }
+        #status-wrap { display:flex; align-items:center; gap:10px; }
+        #player-status { width:48px; height:48px; object-fit:contain; border:1px solid var(--green); background:#0b1714; }
+        #status { color:var(--muted); font-size:.76rem; text-align:right; line-height:1.7; }
+        main { padding:26px; display:grid; grid-template-columns:minmax(260px,1fr) minmax(250px,.8fr); gap:24px; }
+        .scene { min-width:0; }
+        #pic { display:block; width:100%; height:280px; object-fit:contain; background:#0b1714; border:1px solid var(--line); image-rendering:auto; }
+        #para { min-height:104px; margin:14px 0 0; padding:15px; color:#dce3d1; line-height:1.65; border-left:3px solid var(--green); background:#101b18; }
+        #para em { color:var(--green); font-style:normal; }
+        .panel { padding:18px; background:var(--panel); border:1px solid var(--line); }
+        .panel h2 { margin:0 0 13px; font:700 1.05rem 'Space Grotesk',sans-serif; }
+        #story { min-height:135px; color:var(--muted); line-height:1.7; font-size:.82rem; }
+        .command { display:flex; gap:8px; margin-top:16px; }
+        input { min-width:0; flex:1; padding:12px; color:var(--ink); background:#0b1512; border:1px solid var(--line); font:inherit; }
+        button { cursor:pointer; padding:11px 14px; color:#0b1512; background:var(--green); border:0; font:500 .75rem 'DM Mono',monospace; text-transform:uppercase; }
+        button:hover { background:#d7ed9a; } button:disabled { cursor:not-allowed; opacity:.4; }
+        #battle { display:none; grid-column:1 / -1; border-color:var(--red); }
+        #battle.active { display:block; }
+        .battle-head { display:flex; justify-content:space-between; align-items:center; gap:15px; }
+        #enemyName { color:var(--red); }
+        #enemyHp { color:var(--muted); font-size:.8rem; }
+        #arena { position:relative; height:190px; margin-top:13px; overflow:hidden; border:2px solid var(--ink); background:#080d0c; }
+        #heart { position:absolute; z-index:2; left:50%; top:50%; width:34px; height:34px; object-fit:contain; transform:translate(-50%,-50%); filter:drop-shadow(0 0 7px var(--red)); }
+        .projectile { position:absolute; z-index:1; width:13px; height:13px; border-radius:50%; background:#f6e58d; box-shadow:0 0 12px #f6e58d; }
+        #choice-panel { display:none; margin-top:14px; padding-top:14px; border-top:1px solid var(--line); }
+        #choice-panel.active { display:block; }
+        #choice-panel p { color:var(--muted); font-size:.8rem; line-height:1.6; margin:0 0 12px; }
+        .choice { margin-right:8px; }
+        #battleText { min-height:25px; margin:12px 0; color:var(--muted); font-size:.8rem; }
+        .battle-actions { display:flex; gap:9px; align-items:center; }
+        #attack { background:var(--red); color:#260d0b; font-weight:500; }
+        .hp { flex:1; height:10px; background:#3a2523; border:1px solid #6f3935; } #hpFill { display:block; width:100%; height:100%; background:var(--red); transition:width .2s; }
+        footer { padding:0 26px 23px; color:#66766a; font-size:.7rem; }
+        @media (max-width:700px) { main { grid-template-columns:1fr; padding:16px; } header { padding:18px 16px; } #pic { height:220px; } #battle { grid-column:auto; } footer { padding:0 16px 18px; } }
+    </style>
+</head>
+<body>
+<div id="game">
+    <header><div><p class="eyebrow">A living story in five paths</p><h1>The Forests of Lyrica</h1></div><div id="status-wrap"><img id="player-status" src="images/the mc.png" alt="The main character"><div id="status">HP 20 / 20<br>BACKPACK: empty</div></div></header>
+    <main>
+        <section class="scene"><img id="pic" src="images/path.png" alt="The current location"><p id="para"></p></section>
+        <aside class="panel"><h2>The journal</h2><div id="story"></div><div id="choice-panel"><p>The mountain pass opens onto two paths: the bad Tung raises his weapon, while the good Tung waits with an open hand.</p><button class="choice" id="fight-choice">Fight the bad Tung</button><button class="choice" id="talk-choice">Talk to the good Tung</button></div><div class="command"><input id="textStuff" type="text" placeholder="north, take stone..."><button id="but">Go</button></div></aside>
+        <section id="battle" class="panel"><div class="battle-head"><h2 id="enemyName">A wild enemy</h2><span id="enemyHp"></span></div><div id="arena"><img id="heart" src="images/the mc.png" alt="The main character in battle"></div><div id="battleText">Move the MC with the arrow keys, dodge the projectiles, then strike.</div><div class="battle-actions"><button id="attack">Attack</button><button id="flee">Flee</button><div class="hp"><span id="hpFill"></span></div></div></section>
+    </main>
+    <footer>Explore with north, south, east, and west. In battle, guide the heart and choose ATTACK.</footer>
+</div>
+<script>
+    var map = [
+        ["The old stone keep", "The deep well", "The sunny glade"],
+        ["The sleeping dragon", "A narrow pathway", "The ancient gate"],
+        ["The great river", "The weathered bench", "The isolated cottage"],
+        ["The mountain pass", "The wise Zooted Tung", "The family guardian"],
+        ["Veritung's tower", "The Sahrizz's hall", "The final spell"]
+    ];
+    var images = [["keep.png","well.png","glade.png"],["dragon.png","path.png","gate.png"],["river.png","bench.png","cottage.png"],["Tung on the mountains and evil tung in the cave.png","zooted tung.png","Tung guarding his family.png"],["veritung.png","tung sahrizz.png","tung sahmagjick.png"]];
+    var stories = [
+        "The old king vanished beyond these trees. His map ends here, but a green light pulses beneath the ink.",
+        "The forest remembers every promise. Somewhere ahead, the missing king is waiting for someone brave enough to listen.",
+        "A river cuts the forest in two. The water carries a whisper: do not confuse strength with cruelty.",
+        "The Tungs guard the mountain road. They look dangerous, but their eyes keep searching the dark behind you.",
+        "At the forest's heart, the spell that sealed Lyrica begins to wake. What you do next will decide who goes home."
+    ];
+    var encounters = {
+        "1,0": { name:"The sleeping dragon", image:"dragon.png", max:20, text:"The dragon wakes with a sigh of blue fire." },
+        "3,0": { name:"Bad Tung", image:"Tung on the mountains and evil tung in the cave.png", max:26, text:"Bad Tung blocks the mountain pass and hurls sparks into the air." },
+        "3,2": { name:"Tung, family guardian", image:"Tung guarding his family.png", max:25, text:"Tung steps between you and his family." },
+        "4,2": { name:"The Doom of Tung", image:"tung sahmagjick.png", max:32, text:"A thunderous spell fills the clearing." }
+    };
+    var hereR=1, hereC=1, heroHp=20, backpack=[], gameMessage="";
+    var itemNames=["flute","stone","sword"], itemRows=[0,1,2], itemCols=[0,1,2], defeated={};
+    var currentEnemy=null, enemyHp=0, heartX=50, heartY=50, projectiles=[], projectileFrame=null, movementFrame=null, lastMovementTime=0, heldKeys={}, battleTurn=true, mountainChoice="";
+    var pic=document.querySelector("#pic"), para=document.querySelector("#para"), story=document.querySelector("#story"), status=document.querySelector("#status"), textStuff=document.querySelector("#textStuff"), battle=document.querySelector("#battle"), heart=document.querySelector("#heart"), enemyName=document.querySelector("#enemyName"), enemyHpText=document.querySelector("#enemyHp"), battleText=document.querySelector("#battleText"), hpFill=document.querySelector("#hpFill"), choicePanel=document.querySelector("#choice-panel"), arena=document.querySelector("#arena"), attackButton=document.querySelector("#attack");
+
+    function render() {
+        pic.src="images/"+images[hereR][hereC];
+        para.innerHTML=gameMessage+"<em>"+map[hereR][hereC]+".</em>";
+        for(var i=0;i<itemNames.length;i++) if(hereR===itemRows[i] && hereC===itemCols[i]) para.innerHTML+="<br>You see a <strong>"+itemNames[i]+".</strong>";
+        var journalText=stories[hereR]+" "+(hereR===4 ? "The air tastes like lightning." : "The path waits for your next choice.");
+        if(hereR===3 && hereC===0 && mountainChoice==="talk") journalText="Good Tung shares the truth: the spell makes fear look like evil. He gives you a safe path through the pass.";
+        story.textContent=journalText;
+        status.innerHTML="HP "+heroHp+" / 20<br>BACKPACK: "+(backpack.length ? backpack.join(", ") : "empty");
+        choicePanel.classList.toggle("active", hereR===3 && hereC===0 && !mountainChoice && !currentEnemy);
+        var encounter=encounters[hereR+","+hereC];
+        if(encounter && !defeated[hereR+","+hereC] && (hereR!==3 || hereC!==0 || mountainChoice==="fight")) startBattle(encounter); else if(!encounter || defeated[hereR+","+hereC] || mountainChoice==="talk") battle.classList.remove("active");
+    }
+    function playGame() {
+        if(currentEnemy || (hereR===3 && hereC===0 && !mountainChoice)) return;
+        var command=textStuff.value.toLowerCase().trim(); gameMessage="";
+        if(command.includes("north")) hereR=Math.max(0,hereR-1);
+        else if(command.includes("south")) hereR=Math.min(map.length-1,hereR+1);
+        else if(command.includes("west")) hereC=Math.max(0,hereC-1);
+        else if(command.includes("east")) hereC=Math.min(map[0].length-1,hereC+1);
+        else if(command.includes("take")) takeItem(command);
+        else gameMessage="The forest does not understand that command. Try north, south, east, west, or take.";
+        textStuff.value=""; render();
+    }
+    function takeItem(command) {
+        for(var i=0;i<itemNames.length;i++) if(command.includes(itemNames[i]) && hereR===itemRows[i] && hereC===itemCols[i]) { backpack.push(itemNames[i]); itemRows[i]=-1; itemCols[i]=-1; gameMessage="You take the "+itemNames[i]+". It feels warm in your hand.<br>"; return; }
+        gameMessage="There is no such thing here.";
+    }
+    function startBattle(enemy) {
+        currentEnemy=enemy; enemyHp=enemy.max; heartX=50; heartY=50; heldKeys={}; lastMovementTime=0; battleTurn=true; attackButton.disabled=false; enemyName.textContent=enemy.name; enemyHpText.textContent="HP "+enemyHp+" / "+enemy.max; battleText.textContent=enemy.text+" Move the MC, dodge the projectiles, then strike."; battle.classList.add("active"); updateHeart(); startMovement();
+    }
+    function updateHeart() { heart.style.left=heartX+"%"; heart.style.top=heartY+"%"; }
+    function startMovement() { if(!movementFrame) movementFrame=requestAnimationFrame(moveHeart); }
+    function moveHeart(timestamp) {
+        movementFrame=null;
+        if(!currentEnemy) return;
+        if(!lastMovementTime) lastMovementTime=timestamp;
+        var elapsed=Math.min((timestamp-lastMovementTime)/1000,.05), horizontal=0, vertical=0, arenaBox=arena.getBoundingClientRect(), horizontalSpeed=210*100/arenaBox.width, verticalSpeed=280*100/arenaBox.height;
+        if(heldKeys.ArrowLeft || heldKeys.a) horizontal--;
+        if(heldKeys.ArrowRight || heldKeys.d) horizontal++;
+        if(heldKeys.ArrowUp || heldKeys.w) vertical--;
+        if(heldKeys.ArrowDown || heldKeys.s) vertical++;
+        if(horizontal && vertical) { horizontal*=.7071; vertical*=.7071; }
+        heartX=Math.max(5,Math.min(95,heartX+horizontal*horizontalSpeed*elapsed));
+        heartY=Math.max(8,Math.min(92,heartY+vertical*verticalSpeed*elapsed));
+        if(horizontal || vertical) updateHeart();
+        lastMovementTime=timestamp;
+        movementFrame=requestAnimationFrame(moveHeart);
+    }
+    function attack() {
+        if(!currentEnemy || !battleTurn) return;
+        var accuracy=Math.max(1,8-Math.round(Math.abs(heartX-50)/10)); enemyHp=Math.max(0,enemyHp-accuracy); enemyHpText.textContent="HP "+enemyHp+" / "+currentEnemy.max; battleText.textContent="You strike for "+accuracy+" damage!";
+        if(enemyHp===0) { defeated[hereR+","+hereC]=true; battleText.textContent=currentEnemy.name+" fades into the leaves. The road is yours."; currentEnemy=null; setTimeout(render,700); return; }
+        enemyTurn();
+    }
+    function enemyTurn() {
+        battleTurn=false; attackButton.disabled=true; projectiles=[]; var arenaBox=arena.getBoundingClientRect(), centerX=arenaBox.width/2, centerY=arenaBox.height/2;
+        for(var i=0;i<8;i++) { var angle=(Math.PI*2/8)*i+.4, startX=centerX+Math.cos(angle)*220, startY=centerY+Math.sin(angle)*160; var distance=Math.hypot(centerX-startX,centerY-startY); projectiles.push({x:startX,y:startY,vx:(centerX-startX)/distance*3.4,vy:(centerY-startY)/distance*3.4,hit:false,element:createProjectile()}); }
+        battleText.textContent="Dodge the golden projectiles!"; projectileFrame=requestAnimationFrame(moveProjectiles);
+    }
+    function createProjectile() { var element=document.createElement("span"); element.className="projectile"; arena.appendChild(element); return element; }
+    function moveProjectiles() {
+        var arenaBox=arena.getBoundingClientRect(), playerX=arenaBox.width*heartX/100, playerY=arenaBox.height*heartY/100, active=0;
+        projectiles.forEach(function(projectile) { projectile.x+=projectile.vx; projectile.y+=projectile.vy; projectile.element.style.transform="translate("+projectile.x+"px,"+projectile.y+"px)"; if(!projectile.hit && Math.hypot(projectile.x-playerX,projectile.y-playerY)<22) { projectile.hit=true; heroHp=Math.max(0,heroHp-3); projectile.element.remove(); } else if(projectile.x>-20 && projectile.x<arenaBox.width+20 && projectile.y>-20 && projectile.y<arenaBox.height+20) active++; else projectile.element.remove(); });
+        hpFill.style.width=(heroHp/20*100)+"%"; status.innerHTML="HP "+heroHp+" / 20<br>BACKPACK: "+(backpack.length ? backpack.join(", ") : "empty");
+        if(heroHp===0) { projectiles.forEach(function(projectile){ projectile.element.remove(); }); projectiles=[]; battleText.textContent="Your heart goes quiet. Refresh the page to begin again."; return; }
+        if(active>0) projectileFrame=requestAnimationFrame(moveProjectiles); else { projectiles=[]; battleTurn=true; attackButton.disabled=false; battleText.textContent="You survived the volley. Choose your strike."; }
+    }
+    function talkToGoodTung() { mountainChoice="talk"; gameMessage="Good Tung lowers his hand. He tells you the bad Tung is being controlled by the mountain spell. A peaceful route opens."; story.textContent="Good Tung shares the truth: the spell makes fear look like evil. He gives you a safe path through the pass."; choicePanel.classList.remove("active"); render(); }
+    document.querySelector("#but").addEventListener("click",playGame); document.querySelector("#attack").addEventListener("click",attack); document.querySelector("#fight-choice").addEventListener("click",function(){ mountainChoice="fight"; choicePanel.classList.remove("active"); render(); }); document.querySelector("#talk-choice").addEventListener("click",talkToGoodTung); document.querySelector("#flee").addEventListener("click",function(){ if(currentEnemy){ currentEnemy=null; battle.classList.remove("active"); gameMessage="You retreat, but the forest will remember this encounter."; render(); }});
+    textStuff.addEventListener("keydown",function(event){ if(event.key==="Enter") playGame(); });
+    document.addEventListener("keydown",function(event){ if(!currentEnemy) return; var key=event.key.toLowerCase(); if(event.key.indexOf("Arrow")===0 || ["w","a","s","d"].includes(key)) { event.preventDefault(); heldKeys[event.key.indexOf("Arrow")===0 ? event.key : key]=true; startMovement(); } });
+    document.addEventListener("keyup",function(event){ delete heldKeys[event.key]; delete heldKeys[event.key.toLowerCase()]; });
+    window.addEventListener("blur",function(){ heldKeys={}; });
+    render();
+</script>
+</body>
+</html>

@@ -1,0 +1,53 @@
+<!doctype html>
+<html>
+	<head>
+		<title>Finding text in a String</title>
+	</head>
+	<body>
+	<script>
+        var a = "Computer";
+        var b = "Computer";
+        var c = "This is a Computer I think";
+        var d = "This is a computer I think";
+            // .equals is ===
+        // if(a===b)
+            //console.log("a and b are the same");
+            // .contains is .includes
+        // if(c.includes(a))
+            //console.log("c includes a");
+        // else
+            // console.log("c does not include a");
+        // .matches is .test, "" -> //
+        // console.log(/[Cc]omputer/.test(a));
+        // console.log(/.*[Cc]omputer.*/.test("This is a computer"));
+        // .indexOf is .indexOf
+        // console.log("Computer".indexOf("Z")); // -1
+        //
+        // console.log("This is a computer I think".indexOf("computer")); // 10
+        if(c.indexOf(a)!=-1)
+            // console.log("c contains a");
+
+
+        //        0  1  2  3  4      index
+        var ar = [1, 2, 3, 4, 9]; // values
+        // console.log(ar);
+        // console.log(ar[0]); // ar[0] gives the value linked to index 0
+        // console.log(ar[3]); // 4
+        // console.log(ar[5]); // undefined
+
+        var mat = [
+            [1, 2, 3],
+            [4, 5, 6],
+            [7, 8, 9]
+        ];
+        // console.log(mat[2][1]);
+        // to traverse a matrix, for loop through the row, then a for loop through the columns
+        for(var r = 0; r<mat.length; r++) {
+            for(var c = 0; c<mat[0].length; c++) {
+                mat[r][c] = mat[r][c]+1;
+            }
+        }
+        console.log(mat);
+    </script>
+	</body>
+</html>
