@@ -170,53 +170,17 @@ class Attack {
         this.lunge = lunge;
         this.perilous = false;
         this.thrust = false;
-        this.ranged = false;
+        this.dash = 0;
     }
     markPerilous() { this.perilous = true; return this; }
     markThrust() { this.thrust = true; return this; }
-    markRanged() { this.ranged = true; return this; }
     copy(windupMul, dmgMul) {
         const a = new Attack(this.name, this.windup * windupMul, this.active, this.recovery * Math.max(0.6, windupMul), this.range,
             this.arc / DEG, this.damage * dmgMul, this.posture * dmgMul, this.lunge);
         a.perilous = this.perilous;
         a.thrust = this.thrust;
-        a.ranged = this.ranged;
+        a.dash = this.dash;
         return a;
-    }
-}
-
-class Arrow {
-    constructor() {
-        this.x = 0;
-        this.y = 0;
-        this.vx = 0;
-        this.vy = 0;
-        this.life = 2.5;
-        this.stuckT = 0;
-        this.friendly = false;
-        this.stuck = false;
-        this.dead = false;
-        this.owner = null;
-        this.damage = 10;
-        this.posture = 14;
-    }
-    draw(g) {
-        const a = Math.atan2(this.vy, this.vx);
-        const cx = Math.cos(a), cy = Math.sin(a), x = this.x, y = this.y;
-        const alpha = this.stuck ? U.clamp(1 - (this.stuckT - 2), 0, 1) : 1;
-        setStroke(g, 2, false);
-        g.strokeStyle = css(U.alpha(rgb(110, 80, 50), alpha));
-        strokeLine(g, x - cx * 22, y - cy * 22, x, y);
-        g.strokeStyle = css(U.alpha(this.friendly ? rgb(255, 220, 90) : rgb(220, 220, 230), alpha));
-        strokeLine(g, x - cx * 5, y - cy * 5, x + cx * 2, y + cy * 2);
-        g.strokeStyle = css(U.alpha(rgb(240, 240, 240), alpha));
-        strokeLine(g, x - cx * 22 - cy * 3, y - cy * 22 + cx * 3, x - cx * 17, y - cy * 17);
-        strokeLine(g, x - cx * 22 + cy * 3, y - cy * 22 - cx * 3, x - cx * 17, y - cy * 17);
-        if (this.friendly && !this.stuck) {
-            g.strokeStyle = 'rgba(255,220,90,0.353)';
-            setStroke(g, 5, false);
-            strokeLine(g, x - cx * 40, y - cy * 40, x, y);
-        }
     }
 }
 

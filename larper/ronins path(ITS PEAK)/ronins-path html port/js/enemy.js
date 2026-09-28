@@ -1,5 +1,11 @@
 'use strict';
 
+/** Gap-closing attacks charge forward at this speed during their windup. */
+function withDash(a, speed) {
+    a.dash = speed;
+    return a;
+}
+
 // ---- move sets ----
 const EA = {
     R_A: new Attack('slash', .45, .12, .45, 70, 140, 14, 18, 240),
@@ -12,21 +18,29 @@ const EA = {
     SP_T2: new Attack('thrust2', .28, .14, .50, 118, 26, 13, 16, 170).markThrust(),
     SP_SWEEP: new Attack('sweep', .60, .16, .60, 108, 200, 16, 22, 70),
     SP_PER: new Attack('lunge', .75, .20, .80, 150, 24, 30, 10, 620).markPerilous().markThrust(),
-    AR_SHOT: new Attack('shot', .80, .05, .55, 900, 10, 10, 14, 0).markRanged(),
-    AR_STAB: new Attack('stab', .35, .10, .45, 58, 110, 8, 10, 120),
     BR_SMASH: new Attack('smash', .85, .18, .90, 108, 160, 30, 42, 130),
     BR_SWEEP: new Attack('sweep', .55, .16, .70, 112, 190, 22, 30, 80),
     BR_PER: new Attack('crush', 1.0, .25, 1.0, 130, 300, 38, 0, 90).markPerilous(),
+    R_DASH: withDash(new Attack('dash', .50, .12, .55, 80, 120, 18, 22, 320), 430),
+    R_SPIN: new Attack('spin', .55, .16, .60, 80, 300, 16, 22, 120),
+    R_SWEEP: new Attack('lowsweep', .75, .16, .70, 92, 220, 24, 0, 60).markPerilous(),
+    SP_DASH: withDash(new Attack('charge', .55, .16, .60, 128, 26, 16, 18, 300).markThrust(), 460),
+    SP_SPIN: new Attack('whirl', .60, .18, .65, 112, 340, 15, 22, 60),
+    SP_FLURRY: new Attack('flurry', .18, .10, .30, 116, 22, 8, 10, 120).markThrust(),
+    BR_CHARGE: withDash(new Attack('charge', .70, .20, .90, 70, 100, 26, 40, 500), 480),
+    BR_STOMP: new Attack('stomp', .80, .20, .90, 124, 360, 26, 0, 0).markPerilous(),
 };
 
-// Enemy types: 'RONIN' | 'SPEAR' | 'ARCHER' | 'BRUTE'
-// Enemy states: 'IDLE' | 'ALERT' | 'ENGAGE' | 'WINDUP' | 'ACTIVE' | 'RECOVER' | 'STUN' | 'BROKEN' | 'DEAD' | 'RETURN'
+// Enemy types: 'RONIN' | 'SPEAR' | 'BRUTE'
+// Enemy states: 'IDLE' | 'ALERT' | 'ENGAGE' | 'WINDUP' | 'ACTIVE' | 'RECOVER' | 'DODGE' | 'STUN' | 'BROKEN' | 'DEAD' | 'RETURN'
 class Enemy extends Actor {
-    constructor(g, type, x, y, elite, name, seed) {
+    constructor(g, type, x, y, elite, name, seed, vet, boss) {
         super();
         this.g = g;
         this.type = type;
         this.elite = elite;
+        this.vet = elite || !!vet;
+        this.boss = !!boss;
         this.name = name;
         this.lives = 1;
         this.camp = null;
@@ -36,6 +50,7 @@ class Enemy extends Actor {
         this.stT = 0;
         this.stDur = 0;
         this.combos = [];
+        this.gap = [];
         this.combo = null;
         this.comboIdx = 0;
         this.atk = null;
@@ -64,16 +79,29 @@ class Enemy extends Actor {
         this.reach = 0;
         this.showBars = 0;
         this.perilousT = 0;
+        this.dodgeChance = 0;
+        this.dodgeCd = 0;
+        this.dodgeDx = 0;
+        this.dodgeDy = 0;
+        this.dodgeCounter = false;
+        this.seenSwing = -1;
         this.rnd = new Rng(seed);
         this.facing = this.rnd.nextDouble() * TAU;
         switch (type) {
             case 'RONIN': this.stats(16, 70, 70, 150, 380, 0.5); break;
             case 'SPEAR': this.stats(16, 60, 60, 140, 400, 0.35); break;
-            case 'ARCHER': this.stats(15, 40, 40, 135, 520, 0.1); break;
             case 'BRUTE':
                 this.stats(25, 200, 150, 105, 340, 0);
                 this.hyper = true;
                 break;
+        }
+        this.dodgeChance = { RONIN: 0.3, SPEAR: 0.22, BRUTE: 0 }[type];
+        if (this.vet && !elite) {
+            this.maxHp *= 1.3;
+            this.maxPosture *= 1.25;
+            this.detect *= 1.1;
+            this.blockChance = Math.min(0.8, this.blockChance + 0.1);
+            if (this.dodgeChance > 0) this.dodgeChance += 0.12;
         }
         if (elite) {
             this.r *= 1.12;
@@ -81,8 +109,22 @@ class Enemy extends Actor {
             this.maxPosture *= 2.0;
             this.speed *= 1.15;
             this.detect *= 1.2;
-            if (type !== 'BRUTE') this.blockChance = 0.7;
+            if (type !== 'BRUTE') {
+                this.blockChance = 0.7;
+                this.dodgeChance = 0.45;
+            }
             this.lives = 2;
+        }
+        if (this.boss) {
+            this.r *= 1.65;
+            this.maxHp *= 2.4;
+            this.maxPosture *= 2.2;
+            this.speed *= 1.08;
+            this.detect = 700;
+            this.blockChance = 0.8;
+            this.dodgeChance = 0;
+            this.lives = 3;
+            this.hyper = true;
         }
         this.hp = this.maxHp;
         this.buildCombos();
@@ -97,10 +139,15 @@ class Enemy extends Actor {
         this.blockChance = block;
     }
 
-    add(...a) {
-        if (this.elite) this.combos.push(a.map(x => x.copy(x === EA.R_DELAY ? 1 : 0.85, 1.3)));
-        else this.combos.push(a);
+    scaled(a) {
+        if (this.elite) return a.copy(a === EA.R_DELAY ? 1 : 0.85, 1.3);
+        if (this.vet) return a.copy(a === EA.R_DELAY ? 1 : 0.94, 1.1);
+        return a;
     }
+
+    add(...a) { this.combos.push(a.map(x => this.scaled(x))); }
+
+    addGap(...a) { this.gap.push(a.map(x => this.scaled(x))); }
 
     buildCombos() {
         const E = EA;
@@ -111,11 +158,27 @@ class Enemy extends Actor {
                 this.add(E.R_A, E.R_B, E.R_HEAVY);
                 this.add(E.R_THRUST);
                 this.add(E.R_A, E.R_THRUST);
+                this.addGap(E.R_DASH);
+                this.addGap(E.R_DASH, E.R_B);
+                if (this.vet) {
+                    this.add(E.R_FAST, E.R_FAST, E.R_HEAVY);
+                    this.add(E.R_A, E.R_DELAY);
+                    this.add(E.R_SPIN);
+                    this.add(E.R_A, E.R_B, E.R_SWEEP);
+                    this.add(E.R_FAST, E.R_SPIN);
+                    this.addGap(E.R_DASH, E.R_A, E.R_THRUST);
+                }
                 if (this.elite) {
                     this.add(E.R_FAST, E.R_FAST, E.R_FAST, E.R_FAST, E.R_HEAVY);
                     this.add(E.R_A, E.R_B, E.R_A, E.R_B);
                     this.add(E.R_FAST, E.R_FAST, E.R_DELAY);
                     this.add(E.R_HEAVY, E.R_THRUST);
+                    this.addGap(E.R_DASH, E.R_SPIN, E.R_SWEEP);
+                }
+                if (this.boss) {
+                    this.add(E.R_DASH, E.R_SPIN, E.R_SWEEP, E.R_THRUST);
+                    this.add(E.R_FAST, E.R_FAST, E.R_SPIN, E.R_HEAVY, E.R_SWEEP);
+                    this.addGap(E.R_DASH, E.R_DASH, E.R_SPIN);
                 }
                 this.reach = 70;
                 break;
@@ -125,20 +188,33 @@ class Enemy extends Actor {
                 this.add(E.SP_T1, E.SP_SWEEP);
                 this.add(E.SP_PER);
                 this.add(E.SP_T1, E.SP_T2, E.SP_PER);
+                this.addGap(E.SP_DASH);
+                this.addGap(E.SP_DASH, E.SP_T2);
+                if (this.vet) {
+                    this.add(E.SP_FLURRY, E.SP_FLURRY, E.SP_FLURRY, E.SP_T1);
+                    this.add(E.SP_SPIN);
+                    this.add(E.SP_T1, E.SP_SPIN);
+                    this.add(E.SP_SWEEP, E.SP_PER);
+                    this.addGap(E.SP_DASH, E.SP_SWEEP, E.SP_PER);
+                }
                 if (this.elite) {
                     this.add(E.SP_T1, E.SP_T2, E.SP_T2, E.SP_T2, E.SP_SWEEP);
                     this.add(E.SP_SWEEP, E.SP_SWEEP, E.SP_PER);
                 }
                 this.reach = 112;
                 break;
-            case 'ARCHER':
-                this.reach = 58;
-                break;
             case 'BRUTE':
                 this.add(E.BR_SMASH);
                 this.add(E.BR_SMASH, E.BR_SWEEP);
                 this.add(E.BR_PER);
                 this.add(E.BR_SWEEP, E.BR_SWEEP, E.BR_SMASH);
+                this.addGap(E.BR_CHARGE);
+                if (this.vet) {
+                    this.add(E.BR_STOMP);
+                    this.add(E.BR_SMASH, E.BR_STOMP);
+                    this.add(E.BR_SWEEP, E.BR_SMASH, E.BR_PER);
+                    this.addGap(E.BR_CHARGE, E.BR_SMASH);
+                }
                 if (this.elite) {
                     this.add(E.BR_SWEEP, E.BR_SWEEP, E.BR_SWEEP, E.BR_PER);
                     this.add(E.BR_SMASH, E.BR_SMASH, E.BR_SMASH);
@@ -149,9 +225,10 @@ class Enemy extends Actor {
     }
 
     pickCombo() {
-        if (this.type === 'ARCHER') return [EA.AR_STAB];
         return this.combos[this.rnd.nextInt(this.combos.length)];
     }
+
+    pickGap() { return this.gap[this.rnd.nextInt(this.gap.length)]; }
 
     setSt(s) {
         this.st = s;
@@ -175,6 +252,7 @@ class Enemy extends Actor {
         this.hitFlash -= dt;
         this.showBars -= dt;
         this.perilousT -= dt;
+        this.dodgeCd -= dt;
         if (Math.abs(this.kbx) + Math.abs(this.kby) > 1) {
             this.move(g.world, this.kbx * dt, this.kby * dt);
             const k = Math.exp(-dt * 10);
@@ -191,6 +269,21 @@ class Enemy extends Actor {
             if (this.tokenT > 3 && this.st === 'ENGAGE') this.releaseToken();
         }
         if (this.elite && this.aware && this.rnd.nextDouble() < dt * 10) g.fx.wisp(this.x, this.y, rgb(110, 30, 150));
+        if (this.boss && this.aware && this.rnd.nextDouble() < dt * 18) g.fx.wisp(this.x, this.y, rgb(255, 90, 50));
+        if (p.untargetable() && (this.st === 'WINDUP' || (this.st === 'RECOVER' && this.attacking()))) {
+            this.releaseToken();
+            this.attackCd = Math.max(this.attackCd, 0.7);
+            this.setSt('ENGAGE');
+        }
+        // one dodge roll per player swing, and only if we're being swung at
+        if (p.swingId !== this.seenSwing) {
+            this.seenSwing = p.swingId;
+            const aimedAtMe = Math.abs(U.angDiff(p.facing, p.angleTo(this))) < 1.2 || (p.st === 'ART' && p.curArt.spin);
+            if (this.st === 'ENGAGE' && pAlive && aimedAtMe && d < 170 + this.r && this.dodgeCd <= 0
+                && this.rnd.nextDouble() < this.dodgeChance) {
+                this.startDodge(p, p.st === 'ART' || this.rnd.nextDouble() < 0.4, true);
+            }
+        }
         switch (this.st) {
             case 'IDLE': this.idle(dt, d, toP, p, pAlive); break;
             case 'ALERT':
@@ -200,6 +293,13 @@ class Enemy extends Actor {
             case 'ENGAGE': this.engage(dt, d, toP, p, pAlive); break;
             case 'WINDUP': this.windup(dt, d, toP, p); break;
             case 'ACTIVE': this.activeSt(dt, d, toP, p); break;
+            case 'DODGE': {
+                const sp = 560 * Math.pow(Math.max(0, 1 - this.stT / this.stDur), 1.4) + 30;
+                this.move(g.world, this.dodgeDx * sp * dt, this.dodgeDy * sp * dt);
+                this.facing = U.turn(this.facing, toP, dt * 10);
+                if (this.stT >= this.stDur) this.afterDodge(d, p);
+                break;
+            }
             case 'RECOVER':
                 if (this.stT >= this.stDur) {
                     if (this.combo !== null && this.comboIdx + 1 < this.combo.length) {
@@ -207,8 +307,8 @@ class Enemy extends Actor {
                         this.beginAttack(1);
                     } else {
                         this.releaseToken();
-                        this.attackCd = this.elite ? 0.3 + this.rnd.nextDouble() * 0.7 : 0.9 + this.rnd.nextDouble() * 1.2;
-                        if (this.type === 'ARCHER') this.attackCd = 1.6 + this.rnd.nextDouble() * 1.4;
+                        this.attackCd = this.elite ? 0.3 + this.rnd.nextDouble() * 0.7
+                            : this.vet ? 0.6 + this.rnd.nextDouble() * 0.9 : 0.9 + this.rnd.nextDouble() * 1.2;
                         this.setSt('ENGAGE');
                     }
                 }
@@ -256,7 +356,7 @@ class Enemy extends Actor {
         }
         if (!pAlive || p.invuln > 0.5) return;
         const inCone = Math.abs(U.angDiff(this.facing, toP)) < 1.1;
-        const hearing = p.sneaking() ? 38 : (Math.hypot(p.vx, p.vy) > 60 ? 150 : 70);
+        const hearing = (p.sneaking() ? 38 : (Math.hypot(p.vx, p.vy) > 60 ? 150 : 70)) * p.stealth;
         if ((d < this.detect && inCone) || d < hearing) this.alert(true);
     }
 
@@ -282,16 +382,10 @@ class Enemy extends Actor {
         }
         this.showBars = Math.max(this.showBars, 1);
         this.facing = U.turn(this.facing, toP, dt * 7);
-        if (this.type === 'ARCHER') {
-            if (d < 64 && this.attackCd <= 0) {
-                this.startCombo([EA.AR_STAB], 1);
-                return;
-            }
-            if (this.attackCd <= 0 && d < 620) {
-                this.startCombo([this.elite ? EA.AR_SHOT.copy(0.7, 1.3) : EA.AR_SHOT], 1);
-                return;
-            }
-            this.circle(dt, d, toP, 330, 0.6);
+        if (p.untargetable()) {
+            this.releaseToken();
+            this.attackCd = Math.max(this.attackCd, 0.5);
+            this.circle(dt, d, toP, this.type === 'BRUTE' ? 220 : 180, 0.4);
             return;
         }
         if (this.attackCd <= 0 && !this.hasToken && g.requestToken(this)) {
@@ -301,6 +395,10 @@ class Enemy extends Actor {
         if (this.hasToken) {
             if (d < this.reach + p.r - 4) {
                 this.startCombo(this.pickCombo(), 1);
+                return;
+            }
+            if (this.gap.length > 0 && d > this.reach + p.r + 30 && d < 280 && this.rnd.nextDouble() < dt * (this.vet ? 2.2 : 0.9)) {
+                this.startCombo(this.pickGap(), 1);
                 return;
             }
             const sp = this.speed * 1.15;
@@ -316,6 +414,10 @@ class Enemy extends Actor {
         if (this.strafeT <= 0) {
             this.strafeT = 1 + this.rnd.nextDouble() * 2;
             this.strafeDir = this.rnd.nextBoolean() ? 1 : -1;
+            if (this.dodgeCd <= 0 && this.dodgeChance > 0 && d < 280 && this.rnd.nextDouble() < (this.vet ? 0.35 : 0.12)) {
+                this.startDodge(this.g.player, false, false);
+                return;
+            }
         }
         const radial = U.clamp((d - ideal) / 60, -1, 1);
         const mx = Math.cos(toP) * radial + Math.cos(toP + Math.PI / 2) * this.strafeDir * 0.6;
@@ -326,6 +428,29 @@ class Enemy extends Actor {
             this.move(this.g.world, mx / l * sp * dt, my / l * sp * dt);
             this.walkAnim += sp * dt;
         }
+    }
+
+    startDodge(p, back, mayCounter) {
+        const g = this.g, toP = this.angleTo(p), side = this.rnd.nextBoolean() ? 1 : -1;
+        const a = back ? toP + Math.PI + side * 0.5 : toP + side * (Math.PI / 2 + 0.35);
+        this.dodgeDx = Math.cos(a);
+        this.dodgeDy = Math.sin(a);
+        this.dodgeCounter = mayCounter && (this.hasToken || this.rnd.nextDouble() < (this.vet ? 0.6 : 0.35));
+        this.releaseToken();
+        this.setSt('DODGE');
+        this.stDur = 0.32;
+        this.dodgeCd = (1.4 + this.rnd.nextDouble() * 1.2) * (this.elite ? 0.7 : 1);
+        g.fx.dust(this.x, this.y, 6);
+        g.sfx.play('DODGE');
+    }
+
+    afterDodge(d, p) {
+        this.setSt('ENGAGE');
+        if (!this.dodgeCounter || p.st === 'DEAD') return;
+        this.hasToken = true;
+        this.tokenT = 0;
+        if (d < this.reach + p.r + 10) this.startCombo(this.pickCombo(), 0.7);
+        else if (this.gap.length > 0) this.startCombo(this.pickGap(), 0.8);
     }
 
     startCombo(c, windupMul) {
@@ -341,7 +466,8 @@ class Enemy extends Actor {
         this.atk = this.combo[this.comboIdx];
         this.atkHit = false;
         this.setSt('WINDUP');
-        this.stDur = this.atk.windup * windupMul;
+        // veterans vary their timing so the rhythm can't be memorised
+        this.stDur = this.atk.windup * windupMul * (this.vet ? 0.88 + this.rnd.nextDouble() * 0.3 : 1);
         if (this.atk.perilous) {
             this.perilousT = this.stDur + 0.3;
             g.sfx.play('PERILOUS');
@@ -355,25 +481,23 @@ class Enemy extends Actor {
         let turnRate = atk.thrust && remaining < 0.2 ? 2.0 : 6.5;
         if (this.type === 'BRUTE') turnRate *= 0.7;
         this.facing = U.turn(this.facing, toP, dt * turnRate);
-        if (!atk.ranged && d > atk.range * 0.7 + p.r) {
-            this.move(g.world, Math.cos(this.facing) * this.speed * 0.35 * dt, Math.sin(this.facing) * this.speed * 0.35 * dt);
-            this.walkAnim += this.speed * 0.35 * dt;
+        if (d > atk.range * 0.7 + p.r) {
+            const chase = atk.dash > 0 ? atk.dash : this.speed * 0.35;
+            this.move(g.world, Math.cos(this.facing) * chase * dt, Math.sin(this.facing) * chase * dt);
+            this.walkAnim += chase * dt;
+            if (atk.dash > 0 && this.rnd.nextDouble() < dt * 20) g.fx.dust(this.x, this.y, 1);
         }
         if (this.stT >= this.stDur) {
             this.setSt('ACTIVE');
             this.stDur = atk.active;
-            if (atk.ranged) {
-                g.spawnArrow(this, atk);
+            g.sfx.play(this.type === 'BRUTE' || atk.perilous ? 'HEAVY' : 'SLASH');
+            const c = atk.perilous ? rgb(255, 80, 60) : rgb(255, 230, 200);
+            const f = this.facing, x = this.x, y = this.y;
+            if (atk.thrust) {
+                g.fx.line(x + Math.cos(f) * this.r, y + Math.sin(f) * this.r, x + Math.cos(f) * (atk.range + 10),
+                    y + Math.sin(f) * (atk.range + 10), 0.18, 3, c);
             } else {
-                g.sfx.play(this.type === 'BRUTE' || atk.perilous ? 'HEAVY' : 'SLASH');
-                const c = atk.perilous ? rgb(255, 80, 60) : rgb(255, 230, 200);
-                const f = this.facing, x = this.x, y = this.y;
-                if (atk.thrust) {
-                    g.fx.line(x + Math.cos(f) * this.r, y + Math.sin(f) * this.r, x + Math.cos(f) * (atk.range + 10),
-                        y + Math.sin(f) * (atk.range + 10), 0.18, 3, c);
-                } else {
-                    g.fx.slash(x, y, atk.range * 0.8, f + atk.arc / 2, -atk.arc, 0.22, this.type === 'BRUTE' ? 10 : 6, c);
-                }
+                g.fx.slash(x, y, atk.range * 0.8, f + atk.arc / 2, -atk.arc, 0.22, this.type === 'BRUTE' ? 10 : 6, c);
             }
         }
     }
@@ -383,7 +507,7 @@ class Enemy extends Actor {
         const f = Math.max(0, 1 - this.stT / atk.active);
         const close = d < this.r + p.r + 6 && Math.abs(U.angDiff(this.facing, toP)) < 1;
         if (!close && atk.lunge > 0) this.move(g.world, Math.cos(this.facing) * atk.lunge * f * dt, Math.sin(this.facing) * atk.lunge * f * dt);
-        if (!this.atkHit && !atk.ranged && p.st !== 'DEAD') {
+        if (!this.atkHit && p.st !== 'DEAD') {
             const tol = atk.arc / 2 + Math.asin(Math.min(1, p.r / Math.max(d, 1)));
             if (d <= atk.range + p.r && Math.abs(U.angDiff(this.facing, toP)) <= tol) {
                 const res = p.receive(this.x, this.y, atk.damage, atk.posture, atk.perilous);
@@ -403,12 +527,15 @@ class Enemy extends Actor {
     }
 
     onDeflected() {
-        const last = this.comboIdx + 1 >= this.combo.length;
-        this.posture += this.atk.posture * 1.3 + 6;
-        this.lastDamageT = this.g.time;
+        const g = this.g, p = g.player, last = this.comboIdx + 1 >= this.combo.length;
+        const chain = 1 + 0.08 * Math.min(p.deflectStreak - 1, 5);
+        this.posture += (this.atk.posture * 1.3 + 6) * p.deflectPost * chain;
+        this.lastDamageT = g.time;
         this.showBars = 3;
-        this.kbx = -Math.cos(this.facing) * 180;
-        this.kby = -Math.sin(this.facing) * 180;
+        this.hitFlash = 0.07;
+        this.kbx = -Math.cos(this.facing) * 240;
+        this.kby = -Math.sin(this.facing) * 240;
+        g.fx.dust(this.x, this.y, 5);
         if (this.posture >= this.maxPosture) {
             this.breakPosture();
             return;
@@ -418,12 +545,15 @@ class Enemy extends Actor {
             this.stDur = this.elite ? 0.5 : 0.8;
             this.releaseToken();
             this.attackCd = 0.6;
+            g.slowmo(0.16);
+            g.fx.text('OPENING', this.x, this.y - 40, rgb(255, 235, 170), 15);
         }
     }
 
     /** Player sword connects. */
     takeHit(p, pa) {
         if (this.st === 'DEAD' || this.beingExecuted) return;
+        if (this.st === 'DODGE' && this.stT < 0.24) return;
         const g = this.g;
         const ang = p.angleTo(this);
         const cx = this.x - Math.cos(ang) * this.r, cy = this.y - Math.sin(ang) * this.r;
@@ -432,9 +562,9 @@ class Enemy extends Actor {
         const wasAware = this.aware;
         if (!this.aware) this.alert(true);
         const neutral = wasAware && (this.st === 'ENGAGE' || this.st === 'ALERT' || this.st === 'RETURN');
-        if (neutral && this.rnd.nextDouble() < this.blockChance + this.blockStreak * 0.1) {
+        if (neutral && !pa.pierce && this.rnd.nextDouble() < (this.blockChance + this.blockStreak * 0.1) * (pa.art ? 0.5 : 1)) {
             this.facing = ang + Math.PI;
-            if (this.elite && this.blockStreak >= 1 && this.rnd.nextDouble() < 0.55) {
+            if (this.elite && !pa.art && this.blockStreak >= 1 && this.rnd.nextDouble() < 0.55) {
                 g.fx.sparks(cx, cy, ang + Math.PI, 2.2, 22, 480, rgb(255, 120, 200));
                 g.sfx.play('CLANG');
                 g.hitstop(0.07);
@@ -471,8 +601,9 @@ class Enemy extends Actor {
         this.hitFlash = 0.12;
         g.fx.blood(cx, cy, ang, 10, 260);
         g.sfx.play('HIT');
-        g.hitstop(pa === P_COMBO[2] ? 0.075 : 0.045);
-        g.shake(pa === P_COMBO[2] ? 5 : 3.5);
+        g.hitstop(pa.art ? 0.11 : pa.heavy ? 0.075 : 0.045);
+        g.shake(pa.art ? 8 : pa.heavy ? 5 : 3.5);
+        if (pa.art) g.fx.sparks(cx, cy, ang, 1.4, 16, 460, rgb(255, 230, 170));
         g.fx.text(String(Math.trunc(dmg)), this.x + this.rnd.nextGaussian() * 6, this.y - 30, WHITE, 13);
         p.ki += 4;
         if (this.hp <= 0) {
@@ -504,7 +635,7 @@ class Enemy extends Actor {
         }
     }
 
-    /** Reflected arrows, Iai Flash, etc. */
+    /** Iai Flash and other unblockable damage. */
     takeRaw(dmg, post, ang) {
         if (this.st === 'DEAD' || this.beingExecuted) return;
         const g = this.g;
@@ -598,7 +729,10 @@ class Enemy extends Actor {
             robe = U.mix(robe, WHITE, 0.8);
             sh = U.mix(sh, WHITE, 0.8);
         }
-        if (this.elite) {
+        if (this.boss) {
+            g2.fillStyle = css(rgb(255, 70, 40, 55 + Math.trunc(35 * Math.sin(time * 5))));
+            fillCircle(g2, x, y, r * 2.1);
+        } else if (this.elite) {
             g2.fillStyle = css(rgb(120, 40, 170, 40 + Math.trunc(30 * Math.sin(time * 4))));
             fillCircle(g2, x, y, r * 1.8);
         }
@@ -606,11 +740,14 @@ class Enemy extends Actor {
             g2.fillStyle = 'rgba(255,30,20,0.275)';
             fillCircle(g2, x, y, r * 1.9);
         }
+        if (this.st === 'DODGE') {
+            g2.fillStyle = 'rgba(225,225,235,0.2)';
+            fillCircle(g2, x - this.dodgeDx * 16, y - this.dodgeDy * 16, r * 1.3);
+        }
         let hatStyle;
         switch (this.type) {
             case 'RONIN': hatStyle = this.elite ? 3 : 0; break;
             case 'SPEAR': hatStyle = 1; break;
-            case 'ARCHER': hatStyle = 0; break;
             default: hatStyle = 2;
         }
         Draw.body(g2, x, y, drawR, this.facing + sway, robe, sh, hat, hatStyle, this.walkAnim);
@@ -622,7 +759,7 @@ class Enemy extends Actor {
         const wp = st === 'WINDUP' ? U.clamp(this.stT / Math.max(this.stDur, 0.01), 0, 1) : 0;
         const ap = st === 'ACTIVE' ? U.clamp(this.stT / Math.max(this.stDur, 0.01), 0, 1) : 0;
         let handRel = 0.9, blade = facing + 0.6, extend = 0;
-        const slashing = atk !== null && !atk.thrust && !atk.ranged;
+        const slashing = atk !== null && !atk.thrust;
         if (st === 'WINDUP' && atk !== null) {
             if (slashing) {
                 blade = facing + atk.arc / 2 + 0.5 * wp;
@@ -651,13 +788,13 @@ class Enemy extends Actor {
             blade = facing + 2.0;
             handRel = 1.2;
         }
-        let hx = x + Math.cos(facing + handRel) * r * 0.9 + Math.cos(facing) * extend;
-        let hy = y + Math.sin(facing + handRel) * r * 0.9 + Math.sin(facing) * extend;
+        const hx = x + Math.cos(facing + handRel) * r * 0.9 + Math.cos(facing) * extend;
+        const hy = y + Math.sin(facing + handRel) * r * 0.9 + Math.sin(facing) * extend;
         let tipLen;
         switch (this.type) {
             case 'RONIN':
-                tipLen = this.elite ? 64 : 54;
-                Draw.katana(g2, hx, hy, blade, tipLen, this.elite ? rgb(170, 120, 200) : rgb(190, 190, 200));
+                tipLen = this.boss ? 92 : this.elite ? 64 : 54;
+                Draw.katana(g2, hx, hy, blade, tipLen, this.boss ? rgb(255, 150, 120) : this.elite ? rgb(170, 120, 200) : rgb(190, 190, 200));
                 break;
             case 'SPEAR':
                 if (st !== 'WINDUP' && st !== 'ACTIVE' && this.blockAnim <= 0 && st !== 'BROKEN') blade = facing + 0.25;
@@ -665,20 +802,10 @@ class Enemy extends Actor {
                 Draw.spear(g2, hx, hy, blade, tipLen, 26);
                 tipLen += 12;
                 break;
-            case 'BRUTE':
+            default:
                 tipLen = this.elite ? 84 : 72;
                 if (st === 'WINDUP' && atk !== null && !atk.thrust) blade = facing + atk.arc / 2 + 0.6 * wp;
                 Draw.club(g2, hx, hy, blade, tipLen);
-                break;
-            default: {
-                const pull = st === 'WINDUP' && atk !== null && atk.ranged ? wp : 0;
-                Draw.bow(g2, x, y, facing, r, pull);
-                if (atk === EA.AR_STAB && (st === 'WINDUP' || st === 'ACTIVE')) Draw.katana(g2, hx, hy, blade, 30, rgb(190, 190, 200));
-                hx = x + Math.cos(facing) * r * 1.6;
-                hy = y + Math.sin(facing) * r * 1.6;
-                blade = facing;
-                tipLen = 0;
-            }
         }
         // the parry cue: a glint right before an attack lands
         if (st === 'WINDUP' && atk !== null && !atk.perilous) {
@@ -692,31 +819,31 @@ class Enemy extends Actor {
     }
 
     robeColor() {
+        if (this.boss) return rgb(56, 20, 18);
         if (this.elite) return rgb(28, 22, 34);
         switch (this.type) {
             case 'RONIN': return rgb(96, 88, 78);
             case 'SPEAR': return rgb(62, 74, 56);
-            case 'ARCHER': return rgb(88, 66, 44);
             default: return rgb(170, 52, 40);
         }
     }
 
     shoulderColor() {
+        if (this.boss) return rgb(145, 45, 30);
         if (this.elite) return this.type === 'BRUTE' ? rgb(60, 20, 30) : rgb(90, 30, 110);
         switch (this.type) {
             case 'RONIN': return rgb(70, 70, 86);
             case 'SPEAR': return rgb(110, 44, 40);
-            case 'ARCHER': return rgb(70, 80, 60);
             default: return rgb(60, 50, 44);
         }
     }
 
     hatColor() {
+        if (this.boss) return rgb(22, 12, 12);
         if (this.elite) return this.type === 'BRUTE' ? rgb(120, 30, 30) : rgb(20, 16, 22);
         switch (this.type) {
             case 'RONIN': return rgb(150, 128, 88);
             case 'SPEAR': return rgb(38, 38, 40);
-            case 'ARCHER': return rgb(126, 104, 64);
             default: return rgb(150, 44, 34);
         }
     }

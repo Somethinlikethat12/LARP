@@ -13,9 +13,13 @@ const SUB_FONT = 'italic 20px serif';
 const KANJI_FAMILY = "'Yu Mincho','MS Mincho','Hiragino Mincho ProN','Noto Serif JP','Noto Serif CJK JP',serif";
 const KANJI_FONT = 'bold 26px ' + KANJI_FAMILY;
 const BIG_KANJI = 'bold 150px ' + KANJI_FAMILY;
+// Living enemies inside this radius of a shrine prevent resting; aware enemies hunting the player block from further out.
+const REST_SAFE_R = 480;
+const REST_HUNT_R = 900;
 
 class Game {
-    constructor(seed, canvas) {
+    constructor(seed, canvas, save) {
+        this.seed = seed;
         this.canvas = canvas;
         this.ctx = canvas.getContext('2d');
         this.sfx = new Sfx();
@@ -24,7 +28,6 @@ class Game {
         this.rnd = new Rng(seed);
         this.world = new World(seed);
         this.enemies = [];
-        this.arrows = [];
 
         this.time = 0;
         this.realTime = 0;
@@ -46,16 +49,48 @@ class Game {
         this.bannerColor = WHITE;
         this.bannerT = 0;
         this.boss = null;
+        this.bossSpawned = false;
+        this.bossDefeated = false;
         this.vignette = null;
         this.redVignette = null;
         this.vigW = 0;
         this.vigH = 0;
+        this.wardShrine = null;
+        this.restBlockers = [];
 
+        this.loadout = new Loadout();
+        this.loadout.load();
+        this.menu = new EquipMenu(this);
+        this.skills = new Set();
+        this.exp = 0;
+        this.pointsEarned = 0;
+        this.skillPoints = 0;
+        this.lastExpLoss = 0;
+        this.parryT = 0;
+        this.parryX = 0;
+        this.parryY = 0;
+        this.parryK = 0;
         this.lastShrine = this.world.shrines[0];
         this.player = new Player(this, this.lastShrine.x, this.lastShrine.y + 60);
         this.camX = this.player.x;
         this.camY = this.player.y;
         this.spawnEnemies();
+
+        this.hasSave = save !== null;
+        this.autosaveT = 30;
+        this.saveNote = null;
+        this.saveNoteOk = true;
+        this.saveNoteT = 0;
+        this.newGameConfirmT = 0;
+        this.resetMapConfirmT = 0;
+        if (save !== null) {
+            SaveGame.apply(this, save);
+            this.banner('Journey Resumed', this.lastShrine.name, rgb(255, 220, 150));
+        }
+        const saveOnExit = () => this.saveNow(false);
+        window.addEventListener('pagehide', saveOnExit);
+        window.addEventListener('beforeunload', saveOnExit);
+        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveOnExit(); });
 
         const resize = () => {
             canvas.width = window.innerWidth;
@@ -72,11 +107,11 @@ class Game {
             if (c.elite) {
                 this.totalElites++;
                 this.addEnemy(new Enemy(this, c.eliteType, c.x + 70, c.y, true, c.eliteName, s++), c);
-                for (let i = 0; i < 3; i++) this.addEnemy(this.randomGrunt(c, s++, false), c);
+                this.addEnemy(this.randomGrunt(c, s++, false), c);
             } else {
-                const n = 3 + rnd.nextInt(3);
-                for (let i = 0; i < n; i++) this.addEnemy(this.randomGrunt(c, s++, false), c);
-                if (rnd.nextDouble() < 0.35) this.addEnemy(this.randomGrunt(c, s++, true), c);
+                const n = 2 + rnd.nextInt(2);
+                const brute = rnd.nextDouble() < 0.3;
+                for (let i = 0; i < n; i++) this.addEnemy(this.randomGrunt(c, s++, brute && i === 0), c);
             }
         }
         const sp = world.shrines[0];
@@ -95,12 +130,13 @@ class Game {
 
     pickType() {
         const r = this.rnd.nextDouble();
-        return r < 0.45 ? 'RONIN' : r < 0.72 ? 'SPEAR' : 'ARCHER';
+        return r < 0.6 ? 'RONIN' : 'SPEAR';
     }
 
+    /** Camp defenders are veterans: tougher, with extra moves and dodges. */
     randomGrunt(c, seed, brute) {
         const a = this.rnd.nextDouble() * TAU, d = 60 + this.rnd.nextDouble() * (c.r - 110);
-        return new Enemy(this, brute ? 'BRUTE' : this.pickType(), c.x + Math.cos(a) * d, c.y + Math.sin(a) * d, false, null, seed);
+        return new Enemy(this, brute ? 'BRUTE' : this.pickType(), c.x + Math.cos(a) * d, c.y + Math.sin(a) * d, false, null, seed, true);
     }
 
     addEnemy(e, c) {
@@ -110,6 +146,19 @@ class Game {
         e.camp = c;
         if (c !== null) c.members.push(e);
         this.enemies.push(e);
+    }
+
+    /** The finale is map-local: clearing this map's elite strongholds summons the Daimyo. */
+    spawnFinalBoss(camp) {
+        if (this.bossSpawned || this.bossDefeated) return null;
+        const c = camp || this.world.camps.find(x => x.elite) || { x: WORLD_SIZE / 2, y: WORLD_SIZE / 2 };
+        const e = new Enemy(this, 'RONIN', c.x, c.y, true, 'The Ashen Daimyo', 900000 + this.rnd.nextInt(99999), true, true);
+        this.addEnemy(e, null);
+        this.bossSpawned = true;
+        this.banner('THE ASHEN DAIMYO', 'The last sword has answered your challenge', rgb(255, 110, 80));
+        this.fx.ring(e.x, e.y, 30, 240, 1.2, 7, rgb(255, 80, 50));
+        this.sfx.play('PERILOUS');
+        return e;
     }
 
     // ================= loop =================
@@ -141,6 +190,31 @@ class Game {
 
     zoomKick(z) { this.zoomKickV = Math.max(this.zoomKickV, z); }
 
+    /** Screen-space impact lines radiating from a deflect. */
+    parryBurst(x, y, k) {
+        this.parryT = 0.2;
+        this.parryX = x;
+        this.parryY = y;
+        this.parryK = k;
+    }
+
+    gainExp(n, x, y) {
+        this.exp += n;
+        this.fx.text('+' + n + ' EXP', x, y - 20, rgb(140, 225, 205), 13);
+        let need = expForNextPoint(this.pointsEarned);
+        while (this.exp >= need) {
+            this.exp -= need;
+            this.pointsEarned++;
+            this.skillPoints++;
+            need = expForNextPoint(this.pointsEarned);
+            const p = this.player;
+            this.fx.text('SKILL POINT', p.x, p.y - 70, rgb(255, 225, 120), 22);
+            this.fx.ring(p.x, p.y, 10, 90, 0.6, 4, rgb(255, 225, 120));
+            this.sfx.play('SHRINE');
+            this.note('Skill point earned  -  spend it in [Tab] > Skills', true);
+        }
+    }
+
     flash(c, a) {
         this.flashColor = c;
         this.flashA = Math.max(this.flashA, a);
@@ -153,14 +227,70 @@ class Game {
         this.bannerT = 3.2;
     }
 
+    // ================= saving =================
+    saveNow(announce) {
+        const ok = SaveGame.write(SaveGame.serialize(this));
+        this.hasSave = this.hasSave || ok;
+        this.autosaveT = 30;
+        if (announce || !ok) this.note(ok ? 'Game saved' : 'Save failed - browser storage blocked. Use Export in the pause menu.', ok);
+        return ok;
+    }
+
+    saveSoon() { this.autosaveT = Math.min(this.autosaveT, 0.5); }
+
+    note(s, ok) {
+        this.saveNote = s;
+        this.saveNoteOk = ok;
+        this.saveNoteT = ok ? 2.2 : 5;
+    }
+
     // ================= update =================
     zoom() { return 1.0 + this.zoomKickV; }
 
     tick(dt) {
         const inp = this.input, player = this.player, world = this.world, fx = this.fx;
         this.realTime += dt;
+        this.saveNoteT -= dt;
+        this.newGameConfirmT -= dt;
+        this.resetMapConfirmT -= dt;
+        if (this.showHelp && this.hasSave && inp.hit('KeyN')) {
+            if (this.newGameConfirmT > 0) {
+                SaveGame.clear();
+                this.hasSave = false;
+                // stop exit handlers from re-saving the old run during reload
+                this.saveNow = () => false;
+                location.replace(location.pathname);
+                return;
+            }
+            this.newGameConfirmT = 3;
+        }
         if (inp.hit('KeyH') || (this.showHelp && (inp.hit('Enter') || inp.hit('NumpadEnter') || inp.mouseHit(1)))) {
             this.showHelp = !this.showHelp;
+            return;
+        }
+        if (this.paused && !this.showHelp) {
+            if (inp.hit('KeyS')) this.saveNow(true);
+            if (inp.hit('KeyX')) {
+                SaveGame.exportFile(this);
+                this.note('Save file exported: ' + SAVE_FILE_NAME, true);
+            }
+            if (inp.hit('KeyL')) SaveGame.importFile(msg => this.note(msg, false));
+            if (inp.hit('KeyM')) {
+                if (this.resetMapConfirmT > 0) {
+                    this.resetMapConfirmT = 0;
+                    this.resetMap();
+                } else {
+                    this.resetMapConfirmT = 3;
+                    this.note('Press M again to reset the map (keeps gear, skills & EXP)', true);
+                }
+            }
+        }
+        if (this.menu.open) {
+            this.menu.tick(inp, dt);
+            return;
+        }
+        if ((inp.hit('Tab') || inp.hit('KeyI')) && !this.paused && !this.showHelp && player.st !== 'DEAD') {
+            this.menu.show();
             return;
         }
         if (inp.hit('Escape')) this.paused = !this.paused;
@@ -173,6 +303,7 @@ class Game {
         if (inp.hit('KeyE')) this.interact();
 
         this.shakeAmt *= Math.exp(-dt * 9);
+        this.parryT -= dt;
         this.zoomKickV *= Math.exp(-dt * 5);
         this.flashA = Math.max(0, this.flashA - dt * 2.5);
         this.bannerT -= dt;
@@ -182,6 +313,7 @@ class Game {
             this.hitstopT -= dt;
             return;
         }
+        if ((this.autosaveT -= dt) <= 0 && player.st !== 'DEAD') this.saveNow(false);
         if (this.slowmoT > 0) {
             this.slowmoT -= dt;
             this.timeScale = 0.3;
@@ -194,7 +326,6 @@ class Game {
             if (e.st === 'DEAD' || U.dist(e.x, e.y, player.x, player.y) < 1800 || e.st === 'RETURN') e.update(sdt);
         }
         this.separate();
-        this.updateArrows(sdt);
         fx.update(sdt);
         const vw = sw / z, vh = sh / z;
         fx.ambient(this.camX, this.camY, vw, vh, sdt, Math.sin(this.time * 0.2) * 20);
@@ -208,6 +339,14 @@ class Game {
                 this.sfx.play('SHRINE');
             }
         }
+        this.wardShrine = null;
+        for (const s of world.shrines) {
+            if (U.dist(s.x, s.y, player.x, player.y) < REST_SAFE_R + 160) {
+                this.wardShrine = s;
+                break;
+            }
+        }
+        this.restBlockers = this.wardShrine !== null ? this.findRestBlockers(this.wardShrine) : [];
         const boss = this.boss;
         if (boss !== null && (boss.st === 'DEAD' || boss.st === 'RETURN' || boss.st === 'IDLE' || boss.distTo(player) > 1300)) this.boss = null;
 
@@ -227,16 +366,37 @@ class Game {
         }
         const s = this.nearShrine();
         if (s !== null && player.st === 'FREE') {
+            const blockers = this.findRestBlockers(s);
+            if (blockers.length > 0) {
+                this.sfx.play('BLOCK');
+                this.fx.text('Cannot rest  -  enemies nearby', player.x, player.y - 46, rgb(255, 90, 70), 16);
+                this.fx.ring(s.x, s.y, 20, REST_SAFE_R, 0.6, 3, rgb(255, 70, 50));
+                for (const e of blockers) this.fx.text('!', e.x, e.y - 36, rgb(255, 80, 60), 22);
+                return;
+            }
             this.lastShrine = s;
             s.discovered = true;
             player.hp = player.maxHp;
             player.gourds = player.maxGourds;
             player.posture = 0;
+            player.lastStandUsed = false;
             this.sfx.play('SHRINE');
             this.fx.ring(s.x, s.y, 20, 160, 1.0, 4, rgb(255, 220, 140));
             this.fx.heal(player.x, player.y);
             this.banner('Rested', s.name + '  -  HP & gourds restored', rgb(255, 220, 140));
+            this.saveNow(true);
         }
+    }
+
+    findRestBlockers(s) {
+        const p = this.player, out = [];
+        for (const e of this.enemies) {
+            if (e.st === 'DEAD') continue;
+            const near = U.dist(e.x, e.y, s.x, s.y) < REST_SAFE_R;
+            const hunting = e.aware && e.st !== 'RETURN' && e.distTo(p) < REST_HUNT_R;
+            if (near || hunting) out.push(e);
+        }
+        return out;
     }
 
     nearShrine() {
@@ -248,11 +408,37 @@ class Game {
         const player = this.player;
         player.respawn(this.lastShrine.x, this.lastShrine.y + 60);
         for (const e of this.enemies) if (e.aware) e.resetToHome();
-        this.arrows.length = 0;
         this.boss = null;
         this.camX = player.x;
         this.camY = player.y;
         this.banner('Resurrection', this.lastShrine.name, rgb(230, 200, 200));
+        this.saveSoon();
+    }
+
+    /** Regenerates the world layout. Keeps gear, skills, EXP and elites slain; enemy stats use the same fixed
+     * formulas as a fresh game, so replaying the map never makes enemies stronger than a first playthrough. */
+    resetMap() {
+        const player = this.player, newSeed = Math.floor(Math.random() * 2 ** 48);
+        this.seed = newSeed;
+        this.rnd = new Rng(newSeed);
+        this.world = new World(newSeed);
+        this.enemies = [];
+        this.boss = null;
+        this.bossSpawned = false;
+        this.bossDefeated = false;
+        this.wardShrine = null;
+        this.restBlockers = [];
+        this.totalElites = 0;
+        this.spawnEnemies();
+        this.lastShrine = this.world.shrines[0];
+        player.respawn(this.lastShrine.x, this.lastShrine.y + 60);
+        this.world.resolve(player);
+        this.camX = player.x;
+        this.camY = player.y;
+        this.paused = false;
+        this.banner('New Horizons', 'The land is reborn  -  your strength remains', rgb(160, 220, 255));
+        this.sfx.play('SHRINE');
+        this.saveNow(true);
     }
 
     separate() {
@@ -290,52 +476,6 @@ class Game {
         }
     }
 
-    updateArrows(dt) {
-        const arrows = this.arrows, player = this.player, fx = this.fx;
-        for (let i = arrows.length - 1; i >= 0; i--) {
-            const a = arrows[i];
-            if (a.stuck) {
-                a.stuckT += dt;
-                if (a.stuckT > 3) arrows.splice(i, 1);
-                continue;
-            }
-            a.life -= dt;
-            for (let step = 0; step < 2 && !a.dead && !a.stuck; step++) {
-                a.x += a.vx * dt / 2;
-                a.y += a.vy * dt / 2;
-                if (this.world.solidAt(a.x, a.y)) {
-                    a.stuck = true;
-                    fx.dust(a.x, a.y, 2);
-                    break;
-                }
-                if (!a.friendly) {
-                    if (U.dist(a.x, a.y, player.x, player.y) < player.r + 5) {
-                        const res = player.receive(a.x - a.vx, a.y - a.vy, a.damage, a.posture, false);
-                        if (res === P_DEFLECT) {
-                            let ang = Math.atan2(-a.vy, -a.vx);
-                            if (a.owner !== null && a.owner.st !== 'DEAD' && a.owner.distTo(player) < 1000) ang = player.angleTo(a.owner);
-                            a.vx = Math.cos(ang) * 1100;
-                            a.vy = Math.sin(ang) * 1100;
-                            a.friendly = true;
-                            a.life = 2;
-                            fx.text('REFLECT', player.x, player.y - 62, rgb(255, 230, 120), 14);
-                        } else if (res !== P_IGNORE) a.dead = true;
-                    }
-                } else {
-                    for (const e of this.enemies) {
-                        if (e.st === 'DEAD' || U.dist(a.x, a.y, e.x, e.y) > e.r + 5) continue;
-                        e.takeRaw(a.damage * 2.5, a.posture * 2.5, Math.atan2(a.vy, a.vx));
-                        this.sfx.play('HIT');
-                        this.hitstop(0.05);
-                        a.dead = true;
-                        break;
-                    }
-                }
-            }
-            if (a.dead || a.life <= 0) arrows.splice(i, 1);
-        }
-    }
-
     // ================= combat API =================
     requestToken(e) {
         if (e.elite) return true;
@@ -347,20 +487,6 @@ class Game {
     engageBoss(e) {
         this.boss = e;
         this.banner(e.name, 'An elite warrior blocks your path', rgb(200, 140, 255));
-    }
-
-    spawnArrow(e, atk) {
-        const a = new Arrow();
-        const sp = e.elite ? 900 : 720;
-        a.x = e.x + Math.cos(e.facing) * (e.r + 10);
-        a.y = e.y + Math.sin(e.facing) * (e.r + 10);
-        a.vx = Math.cos(e.facing) * sp;
-        a.vy = Math.sin(e.facing) * sp;
-        a.owner = e;
-        a.damage = atk.damage;
-        a.posture = atk.posture;
-        this.arrows.push(a);
-        this.sfx.play('ARROW');
     }
 
     stealthable(e) { return !e.aware && e.st === 'IDLE'; }
@@ -429,6 +555,7 @@ class Game {
         e.kbx = Math.cos(a) * 260;
         e.kby = Math.sin(a) * 260;
         p.ki = Math.min(100, p.ki + 25);
+        p.gainArtCharge();
         fx.sparks(cx, cy, a + Math.PI, 3.0, 40, 600, rgb(140, 220, 255));
         fx.ring(cx, cy, 5, 90, 0.4, 5, rgb(180, 230, 255));
         fx.dust(p.x, p.y, 12);
@@ -472,6 +599,10 @@ class Game {
         this.flash(rgb(255, 200, 200), 0.3);
         p.ki = Math.min(100, p.ki + 20);
         fx.text(stealth ? 'STEALTH DEATHBLOW' : 'DEATHBLOW', e.x, e.y - 50, rgb(255, 70, 60), 22);
+        if (p.deathblowHeal > 0) {
+            p.hp = Math.min(p.maxHp, p.hp + p.maxHp * p.deathblowHeal);
+            fx.heal(p.x, p.y);
+        }
         if (e.elite && e.lives > 1) {
             e.lives--;
             e.hp = e.maxHp;
@@ -506,21 +637,39 @@ class Game {
         const player = this.player;
         this.kills++;
         player.ki = Math.min(100, player.ki + 10);
-        if (e.elite) {
-            this.elitesSlain++;
-            player.maxHp += 20;
+        this.gainExp(expForKill(e), e.x, e.y);
+        if (e.boss) {
+            this.bossDefeated = true;
+            this.boss = null;
+            player.baseMaxHp += 40;
+            player.baseGourds++;
+            player.applyLoadout();
             player.hp = player.maxHp;
-            player.maxGourds++;
+            player.gourds = player.maxGourds;
+            this.banner('THE LAND IS AT PEACE', 'The Ashen Daimyo has fallen. You are the last sword standing.', rgb(255, 215, 120));
+            this.saveSoon();
+        } else if (e.elite) {
+            this.elitesSlain++;
+            this.saveSoon();
+            player.baseMaxHp += 20;
+            player.baseGourds++;
+            player.applyLoadout();
+            player.hp = player.maxHp;
             player.gourds = player.maxGourds;
             if (this.boss === e) this.boss = null;
-            if (this.elitesSlain >= this.totalElites) {
-                this.banner('The Land Is At Peace', 'All elites have fallen. You are the last sword standing.', rgb(255, 215, 120));
-            } else this.banner('ELITE SLAIN', e.name + '  -  Vitality up, +1 Healing Gourd', rgb(255, 90, 70));
+            const unlocked = EQUIP_SLOTS.some(s => s.list.some(it => it.unlock === this.elitesSlain));
+            // "elitesSlain" is lifetime data, so the finale depends on the actual current map.
+            const allElitesDeadHere = this.enemies.filter(x => x.elite && !x.boss).every(x => x.st === 'DEAD');
+            if (allElitesDeadHere) {
+                this.spawnFinalBoss(e.camp);
+            } else this.banner('ELITE SLAIN', e.name + '  -  Vitality up, +1 Healing Gourd' + (unlocked ? '  -  New gear unlocked [Tab]' : ''),
+                rgb(255, 90, 70));
         }
         const c = e.camp;
         if (c !== null && !c.cleared) {
             if (c.members.every(m => m.st === 'DEAD')) {
                 c.cleared = true;
+                this.saveSoon();
                 if (!e.elite) this.banner('Camp Cleared', 'The bandits here will trouble no one again', rgb(230, 230, 200));
                 if (player.gourds < player.maxGourds) {
                     player.gourds++;
@@ -535,6 +684,9 @@ class Game {
         this.slowmo(1.0);
         this.shake(12);
         this.boss = null;
+        // as in Sekiro, death costs half of the EXP not yet turned into a skill point
+        this.lastExpLoss = Math.floor(this.exp / 2);
+        this.exp -= this.lastExpLoss;
         for (const e of this.enemies) e.releaseToken();
     }
 
@@ -556,13 +708,12 @@ class Game {
         const vis = world.visible(l, t, r, b);
         world.drawPonds(g, vis, this.time);
         this.fx.drawDecals(g);
+        this.drawShrineWard(g);
         world.drawObstacles(g, vis, this.time);
         const visEnemies = this.enemies.filter(e => e.x > l - 100 && e.x < r + 100 && e.y > t - 100 && e.y < b + 100);
         for (const e of visEnemies) if (e.st === 'DEAD') e.draw(g, this.time);
-        for (const a of this.arrows) if (a.stuck) a.draw(g);
         for (const e of visEnemies) if (e.st !== 'DEAD') e.draw(g, this.time);
         player.draw(g, this.time);
-        for (const a of this.arrows) if (!a.stuck) a.draw(g);
         this.fx.drawWorld(g);
         world.drawCanopies(g, vis, player.x, player.y, this.time);
         this.fx.drawPetals(g);
@@ -571,12 +722,67 @@ class Game {
         this.fx.drawTexts(g);
         g.restore();
 
+        this.drawParryBurst(g, sw, sh, z);
         this.drawVignette(g, sw, sh);
         if (this.flashA > 0) {
             g.fillStyle = css(U.alpha(this.flashColor, this.flashA * 0.6));
             g.fillRect(0, 0, sw, sh);
         }
         this.drawHud(g, sw, sh, db);
+        if (this.menu.open) this.menu.draw(g, sw, sh);
+    }
+
+    /** Ground ring around the nearby shrine: gold when it is safe to rest, red with enemy markers when not. */
+    drawShrineWard(g) {
+        const s = this.wardShrine;
+        if (s === null) return;
+        const p = this.player, blockers = this.restBlockers, safe = blockers.length === 0;
+        const fade = U.clamp((REST_SAFE_R + 160 - U.dist(s.x, s.y, p.x, p.y)) / 160, 0, 1);
+        const pulse = 0.5 + 0.5 * Math.sin(this.realTime * (safe ? 2.5 : 6));
+        const c = safe ? rgb(255, 215, 120) : rgb(255, 60, 45);
+        const glow = g.createRadialGradient(s.x, s.y, 0, s.x, s.y, 150);
+        glow.addColorStop(0, css(U.alpha(c, (0.28 + 0.12 * pulse) * fade)));
+        glow.addColorStop(1, css(U.alpha(c, 0)));
+        g.fillStyle = glow;
+        fillCircle(g, s.x, s.y, 150);
+        g.setLineDash([22, 16]);
+        g.lineDashOffset = -this.realTime * (safe ? 12 : 40);
+        setStroke(g, 3, false);
+        g.strokeStyle = css(U.alpha(c, (0.22 + 0.25 * pulse) * fade));
+        g.beginPath();
+        g.arc(s.x, s.y, REST_SAFE_R, 0, TAU);
+        g.stroke();
+        g.setLineDash([]);
+        if (safe) return;
+        setStroke(g, 2.5, false);
+        g.strokeStyle = css(U.alpha(c, 0.5 + 0.4 * pulse));
+        for (const e of blockers) {
+            g.beginPath();
+            g.arc(e.x, e.y, e.r + 9 + pulse * 3, 0, TAU);
+            g.stroke();
+        }
+    }
+
+    drawParryBurst(g, sw, sh, z) {
+        if (this.parryT <= 0) return;
+        const f = this.parryT / 0.2, k = this.parryK;
+        const sx = (this.parryX - this.camX) * z + sw / 2, sy = (this.parryY - this.camY) * z + sh / 2;
+        const n = 18 + k * 3, reach = (1 - f) * (260 + k * 50);
+        setStroke(g, 2 + k * 0.4, true);
+        g.strokeStyle = css(rgb(255, 245, 215, Math.trunc(220 * f)));
+        g.beginPath();
+        for (let i = 0; i < n; i++) {
+            const a = i / n * TAU + (i % 2) * 0.08;
+            const r0 = 40 + reach * (i % 3 === 0 ? 0.6 : 0.9), r1 = r0 + 30 + reach * 0.5;
+            g.moveTo(sx + Math.cos(a) * r0, sy + Math.sin(a) * r0);
+            g.lineTo(sx + Math.cos(a) * r1, sy + Math.sin(a) * r1);
+        }
+        g.stroke();
+        const glow = g.createRadialGradient(sx, sy, 0, sx, sy, 90 + k * 12);
+        glow.addColorStop(0, css(rgb(255, 250, 225, Math.trunc(200 * f))));
+        glow.addColorStop(1, 'rgba(255,220,140,0)');
+        g.fillStyle = glow;
+        fillCircle(g, sx, sy, 90 + k * 12);
     }
 
     drawVignette(g, sw, sh) {
@@ -639,7 +845,10 @@ class Game {
         g.fillStyle = full ? css(rgb(150, 210, 255, Math.trunc(180 + 75 * Math.sin(this.realTime * 8)))) : 'rgb(70,120,210)';
         g.fillRect(hx, ky, Math.trunc(200 * p.ki / 100), 6);
         g.font = SMALL_FONT;
-        if (full) this.text(g, '[F] IAI FLASH READY', hx + 212, ky + 8, rgb(170, 220, 255), false);
+        if (full) {
+            this.text(g, '[F] IAI FLASH READY', hx + 212, ky + 8, rgb(170, 220, 255), false);
+            if (p.dragonFlash) this.text(g, '[G] DRAGON FLASH', hx + 212, ky + 25, rgb(180, 235, 255), false);
+        }
         // --- gourds ---
         for (let i = 0; i < p.maxGourds; i++) {
             const gx = hx + i * 24, gy = ky + 16;
@@ -653,19 +862,56 @@ class Game {
         g.font = SMALL_FONT;
         this.text(g, '[Q] heal', hx + p.maxGourds * 24 + 6, ky + 32, rgb(220, 200, 170), false);
 
+        // --- combat art charges (earned by deflecting) ---
+        const ay = hy - 28, art = p.art, canArt = p.artCharges >= art.cost;
+        const pulse = canArt ? 0.75 + 0.25 * Math.sin(this.realTime * 6) : 1;
+        for (let i = 0; i < p.maxArtCharges; i++) {
+            const cx = hx + 6 + i * 16;
+            g.beginPath();
+            g.moveTo(cx, ay - 13);
+            g.lineTo(cx + 6, ay - 6);
+            g.lineTo(cx, ay + 1);
+            g.lineTo(cx - 6, ay - 6);
+            g.closePath();
+            g.fillStyle = i < p.artCharges ? css(U.alpha(canArt ? art.color : rgb(255, 215, 110), pulse)) : 'rgba(40,36,34,0.8)';
+            g.fill();
+            setStroke(g, 1, false);
+            g.strokeStyle = i < art.cost ? 'rgb(255,225,160)' : 'rgb(110,100,90)';
+            g.stroke();
+        }
+        const tx = hx + p.maxArtCharges * 16 + 8;
+        g.font = 'bold 15px ' + KANJI_FAMILY;
+        this.text(g, art.kanji, tx, ay, canArt ? art.color : rgb(110, 110, 110), false);
+        const kw = g.measureText(art.kanji).width;
+        g.font = 'bold 15px serif';
+        const label = canArt ? art.name + '  READY' : art.name + '  ' + p.artCharges + '/' + art.cost;
+        this.text(g, label, tx + 8 + kw, ay, canArt ? rgb(255, 235, 190) : rgb(150, 140, 130), false);
+        const lw = g.measureText(label).width;
+        g.font = SMALL_FONT;
+        this.text(g, canArt ? '[Block + Attack] or [R]' : 'Deflect to charge', tx + 20 + kw + lw, ay, rgb(180, 170, 150), false);
+
         // --- player posture (center) ---
         if (p.posture > 0.5) Draw.postureBar(g, sw / 2, sh - 44, 380, 9, p.posture / p.maxPosture, false);
 
         // --- prompts ---
-        let prompt = null;
+        let prompt = null, promptColor = rgb(255, 220, 150);
         if (p.st !== 'DEAD') {
             const ns = this.nearShrine();
-            if (db !== null) prompt = this.stealthable(db) ? '[LMB]  STEALTH DEATHBLOW' : '[LMB]  DEATHBLOW';
-            else if (ns !== null) prompt = '[E]  Rest at ' + ns.name;
+            if (db !== null) {
+                prompt = this.stealthable(db) ? '[LMB]  STEALTH DEATHBLOW' : '[LMB]  DEATHBLOW';
+                promptColor = rgb(255, 90, 80);
+            } else if (ns !== null) {
+                const n = this.restBlockers.length;
+                if (n === 0) prompt = '[E]  Rest at ' + ns.name;
+                else {
+                    prompt = 'Cannot rest  -  ' + n + (n === 1 ? ' enemy' : ' enemies') + ' nearby';
+                    promptColor = rgb(255, 90, 70);
+                }
+            }
         }
         if (prompt !== null) {
             g.font = 'bold 20px serif';
-            this.text(g, prompt, sw / 2, sh - 70, db !== null ? rgb(255, 90, 80) : rgb(255, 220, 150), true);
+            this.text(g, prompt, sw / 2, sh - 70, promptColor, true);
         }
 
         // --- top-left info ---
@@ -675,7 +921,18 @@ class Game {
         g.font = SMALL_FONT;
         this.text(g, 'Elites slain ' + this.elitesSlain + '/' + this.totalElites + '     Camps cleared ' + cleared + '/' + world.camps.length
             + '     Kills ' + this.kills, 24, 58, rgb(220, 210, 190), false);
-        this.text(g, '[H] controls   [Esc] pause', 24, 78, rgb(180, 170, 150), false);
+        this.text(g, '[H] controls   [Tab] equipment & skills   [Esc] pause', 24, 78, rgb(180, 170, 150), false);
+        const need = expForNextPoint(this.pointsEarned);
+        g.fillStyle = 'rgba(0,0,0,0.6)';
+        g.fillRect(24, 88, 204, 7);
+        g.fillStyle = 'rgb(120,210,190)';
+        g.fillRect(26, 90, Math.trunc(200 * U.clamp(this.exp / need, 0, 1)), 3);
+        this.text(g, 'EXP ' + Math.floor(this.exp) + '/' + need, 24, 112, rgb(160, 220, 205), false);
+        if (this.skillPoints > 0) {
+            g.font = 'bold 13px sans-serif';
+            this.text(g, this.skillPoints + ' skill point' + (this.skillPoints > 1 ? 's' : '') + ' [Tab]', 130, 112,
+                rgb(255, 220, 120, Math.trunc(170 + 85 * Math.sin(this.realTime * 4))), false);
+        }
         if (p.deflectStreak >= 2) {
             g.font = 'bold 26px serif';
             this.text(g, p.deflectStreak + ' DEFLECT CHAIN', sw / 2, sh - 100, rgb(255, 215, 100), true);
@@ -709,6 +966,10 @@ class Game {
             if (p.deadT > 1.2) {
                 g.font = SUB_FONT;
                 this.text(g, 'Press E to resurrect at ' + this.lastShrine.name, sw / 2, sh / 2 + 140, rgb(230, 220, 210), true);
+                if (this.lastExpLoss > 0) {
+                    g.font = HUD_FONT;
+                    this.text(g, 'Lost ' + this.lastExpLoss + ' EXP', sw / 2, sh / 2 + 168, rgb(200, 140, 140), true);
+                }
             }
         }
 
@@ -719,6 +980,18 @@ class Game {
             this.text(g, 'PAUSED', sw / 2, sh / 2, WHITE, true);
             g.font = SUB_FONT;
             this.text(g, 'Esc to resume   -   H for controls', sw / 2, sh / 2 + 40, rgb(220, 210, 200), true);
+            g.font = HUD_FONT;
+            this.text(g, '[S] Save now      [X] Export save file      [L] Import save file', sw / 2, sh / 2 + 84, rgb(255, 215, 140), true);
+            g.font = SMALL_FONT;
+            const resetHint = this.resetMapConfirmT > 0 ? 'Press M again to reset the map (keeps gear, skills & EXP)' : '[M] Reset Map';
+            this.text(g, resetHint, sw / 2, sh / 2 + 108, this.resetMapConfirmT > 0 ? rgb(255, 150, 120) : rgb(190, 180, 165), true);
+            this.text(g, 'Progress autosaves in this browser. Export a save file to back it up or move it to another browser / computer.',
+                sw / 2, sh / 2 + 128, rgb(190, 180, 165), true);
+        }
+        if (this.saveNoteT > 0 && this.saveNote !== null) {
+            g.font = HUD_FONT;
+            const a = U.clamp(this.saveNoteT * 2, 0, 1);
+            this.text(g, this.saveNote, sw / 2, 112, U.alpha(this.saveNoteOk ? rgb(200, 235, 190) : rgb(255, 110, 90), a), true);
         }
         if (this.showHelp) this.drawHelp(g, sw, sh);
     }
@@ -807,11 +1080,14 @@ class Game {
             ['Mouse', 'Aim / face direction'],
             ['Left Click / J', 'Attack (3-hit combo, buffered)'],
             ['Right Click / K', 'Tap right before a hit to DEFLECT. Hold to block (costs posture).'],
-            ['Space / L', 'Dodge (invincible frames). No direction = backstep.'],
+            ['Space / L', 'Tap to dodge (invincible frames, dashes forward with no direction). Hold to sprint.'],
             ['Dodge INTO a thrust', 'MIKIRI COUNTER a perilous thrust (red kanji)'],
             ['Q', 'Drink healing gourd'],
             ['F', 'Iai Flash - dash-slash through enemies (needs full Ki)'],
-            ['E', 'Rest at shrine (heal, refill gourds, set respawn)'],
+            ['G', 'Dragon Flash - a long-range cut (learn it in the Skill Tree, needs full Ki)'],
+            ['Hold Block + Attack / R', 'Combat Art - charged by deflects & Mikiri counters, not spammable'],
+            ['Tab / I', 'Equipment (arts, sword, armor, charm, appearance) and the Skill Tree'],
+            ['E', 'Rest at shrine (heal, refill gourds, set respawn) - not while enemies are near'],
             ['Hold block + walk', 'Sneak. Reach an unaware enemy for a STEALTH DEATHBLOW'],
         ];
         let y = 178;
@@ -833,21 +1109,32 @@ class Game {
             'Mashing the parry button shrinks your deflect window. Rhythm beats panic. Successful deflects reset it.',
             'Perilous attacks (red kanji) cannot be blocked: dodge sweeps, and Mikiri-counter thrusts.',
             'Enemies block and will counterattack if you mindlessly swing. Deflect their last hit for a free opening.',
-            'Perfectly deflected arrows fly back at the archer.  Elites need two deathblows.',
+            'Elites need two deathblows.  Defeated enemies grant EXP; every bar filled is a skill point. Death costs half your EXP.',
         ];
         for (const s of tips) {
             this.text(g, s, sw / 2, y, rgb(215, 205, 190), true);
             y += 22;
         }
         g.font = HUD_FONT;
-        this.text(g, 'Press ENTER or click to begin     (H toggles this screen)', sw / 2, sh - 30,
+        const begin = this.hasSave ? 'Press ENTER or click to continue your journey' : 'Press ENTER or click to begin';
+        this.text(g, begin + '     (H toggles this screen)', sw / 2, sh - 30,
             rgb(255, 220, 150, Math.trunc(160 + 90 * Math.sin(this.realTime * 4))), true);
+        if (this.hasSave) {
+            g.font = SMALL_FONT;
+            const confirm = this.newGameConfirmT > 0;
+            this.text(g, confirm ? 'Press N again to erase your save and start a NEW GAME' : '[N] New Game', sw / 2, sh - 54,
+                confirm ? rgb(255, 110, 90) : rgb(190, 180, 165), true);
+        }
     }
 }
 
 // ---------------- boot ----------------
 (() => {
     const params = new URLSearchParams(location.search);
-    const seed = params.has('seed') ? Number(params.get('seed')) : Math.floor(Math.random() * 2 ** 48);
-    new Game(seed, document.getElementById('game')).run();
+    const save = SaveGame.read();
+    let seed;
+    if (params.has('seed') && Number.isFinite(Number(params.get('seed')))) seed = Number(params.get('seed'));
+    else if (save !== null) seed = save.seed;
+    else seed = Math.floor(Math.random() * 2 ** 48);
+    new Game(seed, document.getElementById('game'), save !== null && save.seed === seed ? save : null).run();
 })();

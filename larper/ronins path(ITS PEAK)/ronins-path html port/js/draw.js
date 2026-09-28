@@ -82,6 +82,21 @@ const Draw = {
         g.restore();
     },
 
+    scarf(g, x, y, r, facing, phase, c) {
+        const back = facing + Math.PI;
+        const sx = x + Math.cos(back) * r * 0.5, sy = y + Math.sin(back) * r * 0.5;
+        g.beginPath();
+        g.moveTo(sx, sy);
+        for (let i = 1; i <= 5; i++) {
+            const d = i * 7;
+            const w = Math.sin(phase - i * 0.9) * i * 1.6;
+            g.lineTo(sx + Math.cos(back) * d + Math.cos(back + Math.PI / 2) * w, sy + Math.sin(back) * d + Math.sin(back + Math.PI / 2) * w);
+        }
+        setStroke(g, 4, true);
+        g.strokeStyle = css(c);
+        g.stroke();
+    },
+
     katana(g, hx, hy, ang, len, blade) {
         const c = Math.cos(ang), s = Math.sin(ang);
         setStroke(g, 4.5, true);
@@ -127,29 +142,6 @@ const Draw = {
             const t = 0.45 + i * 0.12;
             fillCircle(g, hx + c * len * t, hy + s * len * t, 2.5);
         }
-    },
-
-    bow(g, x, y, facing, r, pull) {
-        g.save();
-        g.translate(x, y);
-        g.rotate(facing);
-        setStroke(g, 3, false);
-        g.strokeStyle = 'rgb(90,50,30)';
-        g.beginPath();
-        g.ellipse(r * 1.1, 0, r * 0.7, r * 1.6, 0, -70 * DEG, 70 * DEG);
-        g.stroke();
-        setStroke(g, 1, false);
-        g.strokeStyle = 'rgb(230,230,230)';
-        const sx = r * 1.1 - pull * r * 0.9;
-        const ex = r * 1.1 + r * 0.7 * Math.cos(70 * DEG), ey = r * 1.6 * Math.sin(70 * DEG);
-        strokeLine(g, ex - r * 0.1, -ey, sx, 0);
-        strokeLine(g, ex - r * 0.1, ey, sx, 0);
-        if (pull > 0.05) {
-            setStroke(g, 2, false);
-            g.strokeStyle = 'rgb(120,90,60)';
-            strokeLine(g, sx, 0, sx + 30, 0);
-        }
-        g.restore();
     },
 
     /** Sekiro-style glint: a four-point star. */

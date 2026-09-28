@@ -52,6 +52,7 @@ class Sfx {
 
     load() {
         this.put('CLANG', this.clang(), 4);
+        this.put('PARRY', this.parry(), 3);
         this.put('BLOCK', this.block(), 4);
         this.put('SLASH', this.whooshSound(0.2, 0.05, 0.5, 1.5), 4);
         this.put('HEAVY', this.whooshSound(0.35, 0.02, 0.25, 1.9), 3);
@@ -59,7 +60,6 @@ class Sfx {
         this.put('HURT', this.hurt(), 3);
         this.put('DEATHBLOW', this.deathblow(), 2);
         this.put('DODGE', this.whooshSound(0.18, 0.03, 0.15, 1.0), 3);
-        this.put('ARROW', this.whooshSound(0.15, 0.2, 0.8, 1.2), 4);
         this.put('PERILOUS', this.perilous(), 2);
         this.put('BREAK', this.postureBreak(), 2);
         this.put('HEAL', this.heal(), 2);
@@ -139,6 +139,17 @@ class Sfx {
         this.sine(b, 5020, 0.15, 13, 0);
         this.sine(b, 880, 0.3, 5, 0);
         return this.pcm(b, 1.3);
+    }
+
+    parry() {
+        const b = this.buf(1.1);
+        this.noise(b, 1.0, 120, 0.95);
+        this.sweep(b, 170, 55, 0.9, 13);
+        this.sine(b, 1760, 0.45, 3.2, 0);
+        this.sine(b, 2637, 0.35, 4.2, 0);
+        this.sine(b, 3951, 0.22, 5.5, 0);
+        this.sine(b, 5274, 0.14, 7.5, 0.004);
+        return this.pcm(b, 1.6);
     }
 
     block() {
