@@ -511,7 +511,7 @@ class EquipMenu {
 
     drawSkills(g, x, y, w, h, R) {
         const game = this.g, skills = game.skills, t = game.realTime;
-        const selIdx = this.sel[SKILL_TAB], selSk = skillAt(Math.floor(selIdx / 4), selIdx % 4);
+        const selIdx = this.sel[SKILL_TAB], selSk = skillAt(Math.floor(selIdx / SKILL_TIERS), selIdx % SKILL_TIERS);
         const need = expForNextPoint(game.pointsEarned);
         // EXP bar and points
         g.fillStyle = 'rgba(0,0,0,0.6)';
