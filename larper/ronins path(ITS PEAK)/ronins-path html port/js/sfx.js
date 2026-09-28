@@ -54,12 +54,12 @@ class Sfx {
         this.put('CLANG', this.clang(), 4);
         this.put('PARRY', this.parry(), 3);
         this.put('BLOCK', this.block(), 4);
-        this.put('SLASH', this.whooshSound(0.2, 0.05, 0.5, 1.5), 4);
-        this.put('HEAVY', this.whooshSound(0.35, 0.02, 0.25, 1.9), 3);
+        this.put('SLASH', this.whooshSound(0.14, 0.18, 0.75, 1.8), 4);
+        this.put('HEAVY', this.whooshSound(0.24, 0.08, 0.45, 2.05), 3);
         this.put('HIT', this.hit(), 4);
         this.put('HURT', this.hurt(), 3);
         this.put('DEATHBLOW', this.deathblow(), 2);
-        this.put('DODGE', this.whooshSound(0.18, 0.03, 0.15, 1.0), 3);
+        this.put('DODGE', this.whooshSound(0.11, 0.16, 0.6, 1.35), 3);
         this.put('PERILOUS', this.perilous(), 2);
         this.put('BREAK', this.postureBreak(), 2);
         this.put('HEAL', this.heal(), 2);
@@ -104,6 +104,17 @@ class Sfx {
         }
     }
 
+    transient(b, amp, decay) {
+        let last = 0;
+        for (let i = 0; i < b.length; i++) {
+            const t = i / this.RATE;
+            const n = this.rnd.nextDouble() * 2 - 1;
+            const hp = n - last * 0.72;
+            last = n;
+            b[i] += amp * hp * Math.exp(-t * decay);
+        }
+    }
+
     whoosh(b, amp, lpLo, lpHi) {
         let y = 0, y2 = 0;
         for (let i = 0; i < b.length; i++) {
@@ -131,34 +142,37 @@ class Sfx {
 
     // ---------- sounds ----------
     clang() {
-        const b = this.buf(0.7);
-        this.noise(b, 0.9, 70, 0.9);
-        this.sine(b, 1320, 0.5, 6, 0);
-        this.sine(b, 2470, 0.35, 8, 0);
-        this.sine(b, 3610, 0.25, 10, 0);
-        this.sine(b, 5020, 0.15, 13, 0);
-        this.sine(b, 880, 0.3, 5, 0);
-        return this.pcm(b, 1.3);
+        const b = this.buf(0.34);
+        this.transient(b, 1.1, 55);
+        this.noise(b, 0.55, 48, 0.82);
+        this.sine(b, 940, 0.32, 10, 0);
+        this.sine(b, 1460, 0.42, 12, 0);
+        this.sine(b, 2210, 0.34, 14, 0);
+        this.sine(b, 3280, 0.24, 18, 0.002);
+        this.sine(b, 4680, 0.14, 22, 0.003);
+        return this.pcm(b, 1.55);
     }
 
     parry() {
-        const b = this.buf(1.1);
-        this.noise(b, 1.0, 120, 0.95);
-        this.sweep(b, 170, 55, 0.9, 13);
-        this.sine(b, 1760, 0.45, 3.2, 0);
-        this.sine(b, 2637, 0.35, 4.2, 0);
-        this.sine(b, 3951, 0.22, 5.5, 0);
-        this.sine(b, 5274, 0.14, 7.5, 0.004);
-        return this.pcm(b, 1.6);
+        const b = this.buf(0.42);
+        this.transient(b, 1.25, 85);
+        this.noise(b, 0.45, 90, 0.9);
+        this.sweep(b, 520, 160, 0.25, 18);
+        this.sine(b, 1820, 0.5, 10, 0);
+        this.sine(b, 2740, 0.38, 12, 0.001);
+        this.sine(b, 4110, 0.24, 16, 0.002);
+        this.sine(b, 5480, 0.13, 20, 0.004);
+        return this.pcm(b, 1.7);
     }
 
     block() {
-        const b = this.buf(0.25);
-        this.noise(b, 0.8, 40, 0.5);
-        this.sine(b, 520, 0.4, 18, 0);
-        this.sine(b, 940, 0.3, 22, 0);
-        this.sine(b, 1600, 0.15, 30, 0);
-        return this.pcm(b, 1.1);
+        const b = this.buf(0.16);
+        this.transient(b, 0.8, 75);
+        this.noise(b, 0.45, 55, 0.42);
+        this.sine(b, 240, 0.45, 24, 0);
+        this.sine(b, 520, 0.24, 30, 0);
+        this.sine(b, 1180, 0.1, 38, 0.001);
+        return this.pcm(b, 1.3);
     }
 
     whooshSound(dur, lo, hi, gain) {
@@ -168,70 +182,82 @@ class Sfx {
     }
 
     hit() {
-        const b = this.buf(0.22);
-        this.sweep(b, 170, 55, 0.9, 18);
-        this.noise(b, 0.7, 35, 0.25);
-        return this.pcm(b, 1.5);
+        const b = this.buf(0.16);
+        this.transient(b, 1.0, 95);
+        this.sweep(b, 220, 60, 0.95, 22);
+        this.noise(b, 0.58, 48, 0.22);
+        this.sine(b, 110, 0.22, 28, 0);
+        return this.pcm(b, 1.65);
     }
 
     hurt() {
-        const b = this.buf(0.3);
-        this.sweep(b, 230, 70, 0.8, 10);
-        this.noise(b, 0.6, 25, 0.35);
-        return this.pcm(b, 1.4);
+        const b = this.buf(0.22);
+        this.transient(b, 0.72, 62);
+        this.sweep(b, 260, 85, 0.72, 12);
+        this.noise(b, 0.48, 32, 0.3);
+        this.sine(b, 160, 0.18, 18, 0);
+        return this.pcm(b, 1.45);
     }
 
     deathblow() {
-        const b = this.buf(1.1);
-        this.noise(b, 1.0, 10, 0.3);
-        this.sweep(b, 130, 35, 1.0, 3.5);
-        this.sine(b, 660, 0.3, 4, 0);
-        this.sine(b, 1250, 0.25, 5, 0);
-        this.sine(b, 1870, 0.12, 6, 0.02);
-        return this.pcm(b, 1.6);
+        const b = this.buf(0.72);
+        this.transient(b, 1.15, 48);
+        this.noise(b, 0.95, 12, 0.24);
+        this.sweep(b, 180, 34, 1.15, 5.5);
+        this.sine(b, 90, 0.35, 7, 0);
+        this.sine(b, 690, 0.28, 6.5, 0.01);
+        this.sine(b, 1380, 0.2, 8, 0.015);
+        this.sine(b, 2760, 0.1, 11, 0.02);
+        return this.pcm(b, 1.8);
     }
 
     perilous() {
-        const b = this.buf(0.6);
-        this.sine(b, 196, 0.5, 3, 0);
-        this.sine(b, 208, 0.5, 3, 0);
-        this.sine(b, 392, 0.25, 4, 0);
-        this.sine(b, 1568, 0.12, 6, 0);
-        this.noise(b, 0.3, 30, 0.6);
-        return this.pcm(b, 1.3);
+        const b = this.buf(0.34);
+        this.transient(b, 0.35, 40);
+        this.sine(b, 220, 0.55, 6.5, 0);
+        this.sine(b, 233, 0.52, 7.2, 0);
+        this.sine(b, 880, 0.16, 12, 0);
+        this.sine(b, 1760, 0.12, 16, 0.01);
+        this.noise(b, 0.16, 34, 0.55);
+        return this.pcm(b, 1.45);
     }
 
     postureBreak() {
-        const b = this.buf(1.4);
-        this.sine(b, 110, 0.7, 2.5, 0);
-        this.sine(b, 221, 0.4, 3, 0);
-        this.sine(b, 331, 0.3, 3.5, 0);
-        this.sine(b, 587, 0.2, 4, 0);
-        this.noise(b, 0.6, 20, 0.4);
-        return this.pcm(b, 1.4);
+        const b = this.buf(0.85);
+        this.transient(b, 0.95, 52);
+        this.sine(b, 98, 0.75, 3.8, 0);
+        this.sine(b, 196, 0.42, 4.6, 0);
+        this.sine(b, 294, 0.28, 5.4, 0.01);
+        this.sine(b, 880, 0.12, 8, 0.02);
+        this.noise(b, 0.72, 16, 0.28);
+        return this.pcm(b, 1.65);
     }
 
     heal() {
-        const b = this.buf(0.6);
-        this.sweep(b, 500, 1000, 0.3, 4);
-        this.sine(b, 1500, 0.15, 6, 0.1);
+        const b = this.buf(0.42);
+        this.sweep(b, 620, 1180, 0.24, 6.5);
+        this.sine(b, 1240, 0.18, 8, 0.03);
+        this.sine(b, 1860, 0.12, 10, 0.08);
         return this.pcm(b, 1.0);
     }
 
     shrine() {
-        const b = this.buf(1.6);
-        this.sine(b, 523, 0.3, 2, 0);
-        this.sine(b, 659, 0.25, 2, 0.12);
-        this.sine(b, 784, 0.25, 2, 0.24);
-        this.sine(b, 1046, 0.2, 2, 0.36);
-        return this.pcm(b, 1.0);
+        const b = this.buf(1.0);
+        this.sine(b, 392, 0.26, 2.8, 0);
+        this.sine(b, 587, 0.2, 3, 0.08);
+        this.sine(b, 784, 0.18, 3.4, 0.16);
+        this.sine(b, 1174, 0.12, 4, 0.22);
+        this.noise(b, 0.05, 8, 0.85);
+        return this.pcm(b, 0.95);
     }
 
     iai() {
-        const b = this.buf(0.6);
-        this.whoosh(b, 1.0, 0.1, 0.9);
-        this.sine(b, 3000, 0.2, 7, 0);
-        this.sine(b, 4400, 0.12, 9, 0);
-        return this.pcm(b, 1.5);
+        const b = this.buf(0.28);
+        this.whoosh(b, 1.0, 0.22, 0.92);
+        this.transient(b, 0.35, 90);
+        this.sine(b, 2480, 0.18, 15, 0);
+        this.sine(b, 3840, 0.12, 18, 0.001);
+        this.sine(b, 5120, 0.08, 24, 0.002);
+        return this.pcm(b, 1.8);
     }
 }
