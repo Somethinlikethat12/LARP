@@ -623,6 +623,7 @@ class Player extends Actor {
                 g.fx.text('GUARD BROKEN', this.x, this.y - 42, rgb(255, 80, 60), 18);
                 g.sfx.play('BREAK');
                 g.shake(10);
+                if (g.onGuardBreak) g.onGuardBreak(this);
                 if (this.hp <= 0) this.die();
             }
             return P_BLOCK;

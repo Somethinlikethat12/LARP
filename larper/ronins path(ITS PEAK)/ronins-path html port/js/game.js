@@ -275,6 +275,11 @@ class Game {
                 this.note('Save file exported: ' + SAVE_FILE_NAME, true);
             }
             if (inp.hit('KeyL')) SaveGame.importFile(msg => this.note(msg, false));
+            if (inp.hit('KeyQ')) {
+                this.saveNow(false);
+                location.replace(location.href.split(/[?#]/)[0]);
+                return;
+            }
             if (inp.hit('KeyM')) {
                 if (this.resetMapConfirmT > 0) {
                     this.resetMapConfirmT = 0;
@@ -981,7 +986,8 @@ class Game {
             g.font = SUB_FONT;
             this.text(g, 'Esc to resume   -   H for controls', sw / 2, sh / 2 + 40, rgb(220, 210, 200), true);
             g.font = HUD_FONT;
-            this.text(g, '[S] Save now      [X] Export save file      [L] Import save file', sw / 2, sh / 2 + 84, rgb(255, 215, 140), true);
+            this.text(g, '[S] Save now      [X] Export save file      [L] Import save file      [Q] Main menu', sw / 2, sh / 2 + 84,
+                rgb(255, 215, 140), true);
             g.font = SMALL_FONT;
             const resetHint = this.resetMapConfirmT > 0 ? 'Press M again to reset the map (keeps gear, skills & EXP)' : '[M] Reset Map';
             this.text(g, resetHint, sw / 2, sh / 2 + 108, this.resetMapConfirmT > 0 ? rgb(255, 150, 120) : rgb(190, 180, 165), true);
@@ -1128,13 +1134,13 @@ class Game {
     }
 }
 
-// ---------------- boot ----------------
-(() => {
+// ---------------- boot (called from the main menu) ----------------
+function startJourney(canvas) {
     const params = new URLSearchParams(location.search);
     const save = SaveGame.read();
     let seed;
     if (params.has('seed') && Number.isFinite(Number(params.get('seed')))) seed = Number(params.get('seed'));
     else if (save !== null) seed = save.seed;
     else seed = Math.floor(Math.random() * 2 ** 48);
-    new Game(seed, document.getElementById('game'), save !== null && save.seed === seed ? save : null).run();
-})();
+    new Game(seed, canvas, save !== null && save.seed === seed ? save : null).run();
+}
