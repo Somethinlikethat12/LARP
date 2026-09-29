@@ -13,7 +13,7 @@
             font-family: Georgia, 'Times New Roman', serif; color: #eadfcf;
         }
         #menu[hidden], #menu .panel[hidden] { display: none; }
-        #menu .panel { display: flex; flex-direction: column; align-items: center; gap: 14px; width: min(460px, 90vw); text-align: center; }
+        #menu .panel { display: flex; flex-direction: column; align-items: center; gap: 14px; width: min(460px, 90vw); text-align: center; max-height: 96vh; overflow-y: auto; }
         #menu h1 { margin: 0; font-size: 58px; color: #e03c32; letter-spacing: 2px; text-shadow: 3px 3px 0 #000; }
         #menu h2 { margin: 0 0 6px; font-size: 32px; color: #e03c32; }
         #menu .kanji { font-size: 30px; color: #c9b48f; margin-bottom: 18px; font-family: 'Yu Mincho', 'MS Mincho', 'Noto Serif JP', serif; }
@@ -33,6 +33,13 @@
         #menu .status { min-height: 42px; }
         #menu .status.bad { color: #ff8a70; }
         #menu .note { font-size: 13px; color: #8f806e; }
+        #menu .settings { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; width: 100%; text-align: left; }
+        #menu .settings label { display: flex; flex-direction: column; gap: 3px; font-size: 13px; color: #c9bba5; }
+        #menu select {
+            padding: 7px; font: 15px Georgia, serif; color: #f4e9d8; background: #1a1210; border: 1px solid #6b5443; border-radius: 4px;
+        }
+        #menu select:disabled { opacity: 0.5; }
+        #menu .players { font-weight: bold; color: #ffd98c; }
     </style>
 </head>
 <body>
@@ -42,25 +49,71 @@
             <h1>RONIN'S PATH</h1>
             <div class="kanji">浪人の道</div>
             <button id="btn-journey">Begin Journey</button>
-            <button id="btn-host">Host Online Duel</button>
-            <button id="btn-join">Join Online Duel</button>
-            <p class="note">Duels are 1v1, best of three. Both swordsmen fight with identical stats and techniques - only skill decides.</p>
+            <button id="btn-host">Host Online Match</button>
+            <button id="btn-join">Join Online Match</button>
+            <p class="note">Host a 1v1 duel or a free-for-all for up to 8 swordsmen. Everyone fights with identical stats and techniques - only skill decides.</p>
         </div>
         <div class="panel" id="menu-host" hidden>
-            <h2>Host a Duel</h2>
+            <h2>Host a Match</h2>
+            <div class="settings">
+                <label>Mode
+                    <select id="set-mode">
+                        <option value="duel">1v1 Duel</option>
+                        <option value="ffa">Free-for-all</option>
+                    </select>
+                </label>
+                <label>Max players
+                    <select id="set-max">
+                        <option>2</option><option>3</option><option>4</option><option>5</option>
+                        <option>6</option><option>7</option><option selected>8</option>
+                    </select>
+                </label>
+                <label>Rounds to win
+                    <select id="set-rounds">
+                        <option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option>
+                    </select>
+                </label>
+                <label>Health
+                    <select id="set-hp">
+                        <option>50</option><option>75</option><option selected>100</option><option>150</option><option>200</option>
+                    </select>
+                </label>
+                <label>Healing gourds
+                    <select id="set-gourds">
+                        <option>0</option><option selected>1</option><option>2</option><option>3</option>
+                    </select>
+                </label>
+                <label>Arena
+                    <select id="set-arena">
+                        <option value="small">Small</option>
+                        <option value="medium" selected>Medium</option>
+                        <option value="large">Large</option>
+                        <option value="huge">Huge</option>
+                    </select>
+                </label>
+                <label>Hold-to-stab
+                    <select id="set-stab">
+                        <option value="on">Allowed</option>
+                        <option value="off">Disabled</option>
+                    </select>
+                </label>
+            </div>
             <p>Room code</p>
             <div class="code" id="host-code">------</div>
             <input id="host-link" readonly placeholder="Invite link">
             <button id="btn-copy" disabled>Copy Invite Link</button>
+            <p class="players" id="host-players"></p>
+            <button id="btn-start" disabled>Start Match</button>
             <p class="status" id="host-status"></p>
             <button class="back">Back</button>
         </div>
         <div class="panel" id="menu-join" hidden>
-            <h2>Join a Duel</h2>
+            <h2>Join a Match</h2>
             <p>Enter the room code from your host, or open their invite link.</p>
             <input id="join-code" maxlength="24" placeholder="ROOM CODE" autocomplete="off" spellcheck="false">
             <button id="btn-join-go">Join</button>
             <p class="status" id="join-status"></p>
+            <p class="note" id="join-lobby"></p>
             <button class="back">Back</button>
         </div>
     </div>

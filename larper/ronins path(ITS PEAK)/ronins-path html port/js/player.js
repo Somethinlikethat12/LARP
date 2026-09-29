@@ -7,8 +7,11 @@ const P_COMBO = [
     new Attack('cut2', 0.07, 0.09, 0.20, 84, 150, 14, 12, 190),
     new Attack('cut3', 0.15, 0.11, 0.34, 98, 230, 24, 22, 280),
 ];
+// holding attack this long turns the press into a stab instead of a slash
+const STAB_HOLD = 0.26;
+const P_STAB = new Attack('stab', 0.42, 0.14, 0.45, 132, 22, 26, 34, 560);
 
-// Player states: 'FREE' | 'ATTACK' | 'ART' | 'DRAGON' | 'DODGE' | 'STAGGER' | 'HEAL' | 'DEATHBLOW' | 'MIKIRI' | 'IAI' | 'DEAD'
+// Player states: 'FREE' | 'ATTACK' | 'STAB' | 'ART' | 'DRAGON' | 'DODGE' | 'STAGGER' | 'HEAL' | 'DEATHBLOW' | 'MIKIRI' | 'IAI' | 'DEAD'
 class Player extends Actor {
     constructor(g, x, y) {
         super();
@@ -37,6 +40,13 @@ class Player extends Actor {
         this.bufIai = 0;
         this.bufArt = 0;
         this.bufDragon = 0;
+        this.bufStab = 0;
+        this.atkPress = false;
+        this.atkHeld = false;
+        this.atkCharging = false;
+        this.atkHoldT = 0;
+        this.stabHits = 0;
+        this.perilousT = 0;
         // combat art
         this.curArt = null;
         this.curArtAtks = null;
@@ -121,6 +131,9 @@ class Player extends Actor {
             b.heavy = i === 2;
             return b;
         });
+        const stab = scaledAttack(P_STAB, s);
+        stab.heavy = stab.pierce = stab.perilous = stab.thrust = true;
+        this.stabAtk = stab;
         this.art = lo.artDef();
         const artStats = Object.assign({}, s, { dmg: s.dmg * s.artDmg });
         this.artAtks = this.art.hits.map(h => scaledAttack(h.atk, artStats));
@@ -152,7 +165,8 @@ class Player extends Actor {
         this.aimY = wy;
         this.guardHeld = inp.mouseDown(3) || inp.down('KeyK');
         this.dodgeHeld = inp.down('Space') || inp.down('KeyL');
-        if (inp.mouseHit(1) || inp.hit('KeyJ')) this.bufAttack = 0.22;
+        this.atkHeld = inp.mouseDown(1) || inp.down('KeyJ');
+        if (inp.mouseHit(1) || inp.hit('KeyJ')) this.atkPress = true;
         if (inp.mouseHit(3) || inp.hit('KeyK')) this.bufParry = 0.15;
         if (inp.hit('Space') || inp.hit('KeyL')) this.bufDodge = 0.18;
         if (inp.hit('KeyQ')) this.bufHeal = 0.12;
@@ -171,6 +185,8 @@ class Player extends Actor {
         this.bufIai -= dt;
         this.bufArt -= dt;
         this.bufDragon -= dt;
+        this.bufStab -= dt;
+        this.perilousT -= dt;
         this.invuln -= dt;
         this.hurtFlash -= dt;
         this.guardFlash -= dt;
@@ -190,10 +206,12 @@ class Player extends Actor {
         const aimAng = Math.atan2(this.aimY - this.y, this.aimX - this.x);
         this.scarf += dt * (4 + Math.hypot(this.vx, this.vy) / 40);
         if (this.st !== 'FREE') this.sprinting = false;
+        this.chargeAttack(dt);
 
         switch (this.st) {
             case 'FREE': this.free(dt, aimAng); break;
             case 'ATTACK': this.attack(dt, aimAng); break;
+            case 'STAB': this.stab(dt, aimAng); break;
             case 'ART': this.artUpdate(dt, aimAng); break;
             case 'DRAGON': this.dragonUpdate(dt); break;
             case 'DODGE': {
@@ -202,7 +220,10 @@ class Player extends Actor {
                 this.vx = this.dodgeDx * sp;
                 this.vy = this.dodgeDy * sp;
                 this.move(g.world, this.vx * dt, this.vy * dt);
-                if (this.stT > 0.2 && this.bufAttack > 0) {
+                if (this.stT > 0.2 && this.bufStab > 0) {
+                    this.bufStab = 0;
+                    this.startStab(Math.atan2(this.aimY - this.y, this.aimX - this.x));
+                } else if (this.stT > 0.2 && this.bufAttack > 0) {
                     this.bufAttack = 0;
                     this.beginAttackOrDeathblow(0);
                 } else if (this.stT > 0.2 && this.bufParry > 0) {
@@ -265,6 +286,27 @@ class Player extends Actor {
         this.stT = 0;
     }
 
+    /** A tap slashes on release; holding past STAB_HOLD buffers a stab instead. */
+    chargeAttack(dt) {
+        if (this.atkPress) {
+            this.atkPress = false;
+            // combat arts (block + attack) and deathblows fire on press
+            if (this.guardHeld || this.g.deathblowTarget() !== null) this.bufAttack = 0.22;
+            else {
+                this.atkCharging = true;
+                this.atkHoldT = 0;
+            }
+        }
+        if (!this.atkCharging) return;
+        if (!this.atkHeld) {
+            this.atkCharging = false;
+            this.bufAttack = 0.22;
+        } else if ((this.atkHoldT += dt) >= STAB_HOLD) {
+            this.atkCharging = false;
+            this.bufStab = 0.25;
+        }
+    }
+
     free(dt, aimAng) {
         const g = this.g;
         this.facing = U.turn(this.facing, aimAng, dt * 22);
@@ -283,7 +325,10 @@ class Player extends Actor {
         if (this.sprinting && g.rnd.nextDouble() < dt * 12) {
             g.fx.dust(this.x - Math.cos(this.facing) * this.r * 0.6, this.y - Math.sin(this.facing) * this.r * 0.6, 1);
         }
-        if (this.bufAttack > 0) {
+        if (this.bufStab > 0) {
+            this.bufStab = 0;
+            this.startStab(aimAng);
+        } else if (this.bufAttack > 0) {
             this.bufAttack = 0;
             // Sekiro-style: attack while holding block performs the combat art
             if (this.guardHeld && g.deathblowTarget() === null) this.tryArt(aimAng);
@@ -370,6 +415,9 @@ class Player extends Actor {
             if (this.stT > 0.04 && this.bufArt > 0) {
                 this.bufArt = 0;
                 this.tryArt(aimAng);
+            } else if (this.stT > 0.04 && this.bufStab > 0) {
+                this.bufStab = 0;
+                this.startStab(aimAng);
             } else if (this.stT > 0.04 && this.bufAttack > 0 && this.combo < 2) {
                 this.bufAttack = 0;
                 this.beginAttackOrDeathblow(this.combo + 1);
@@ -386,6 +434,49 @@ class Player extends Actor {
                 this.comboGrace = 0.4;
             }
         }
+    }
+
+    /** Perilous thrust: cannot be blocked or deflected, only dodged or Mikiri-countered. Shrugs off one hit. */
+    startStab(aimAng) {
+        const g = this.g;
+        this.st = 'STAB';
+        this.stT = 0;
+        this.phase = 0;
+        this.combo = -1;
+        this.swingId++;
+        this.cur = this.stabAtk;
+        this.hitSet.clear();
+        this.guarding = false;
+        this.stabHits = 0;
+        this.facing = aimAng;
+        this.perilousT = this.cur.windup + 0.3;
+        g.sfx.play('PERILOUS');
+        g.fx.ring(this.x, this.y, 6, 46, 0.3, 3, rgb(255, 60, 40));
+    }
+
+    stab(dt, aimAng) {
+        const g = this.g, cur = this.cur;
+        if (this.phase === 0) {
+            this.facing = U.turn(this.facing, aimAng, dt * 5);
+            if (this.stT >= cur.windup) {
+                this.phase = 1;
+                this.stT = 0;
+                g.sfx.play('HEAVY');
+                const f = this.facing;
+                g.fx.line(this.x, this.y, this.x + Math.cos(f) * cur.range, this.y + Math.sin(f) * cur.range, 0.22, 5, rgb(255, 80, 60));
+            }
+        } else if (this.phase === 1) {
+            const sp = cur.lunge * (1 - this.stT / cur.active);
+            if (!g.enemyInFront(this, this.facing, this.r + 26)) this.move(g.world, Math.cos(this.facing) * sp * dt, Math.sin(this.facing) * sp * dt);
+            g.playerHitCheck(this, cur);
+            if (this.stT >= cur.active) {
+                this.phase = 2;
+                this.stT = 0;
+            }
+        } else if (this.stT > 0.12 && this.bufDodge > 0) {
+            this.bufDodge = 0;
+            this.startDodge();
+        } else if (this.stT >= cur.recovery) this.toFree();
     }
 
     tryArt(aimAng) {
@@ -628,6 +719,21 @@ class Player extends Actor {
             }
             return P_BLOCK;
         }
+        // a stab endures the first blow; the second one breaks it
+        if (this.st === 'STAB' && this.phase < 2 && ++this.stabHits < 2) {
+            this.hp -= dmg;
+            this.posture = Math.min(this.maxPosture, this.posture + post * 0.35);
+            this.postureCd = 1.0;
+            this.hurtFlash = 0.3;
+            this.deflectStreak = 0;
+            g.fx.blood(this.x, this.y, ang + Math.PI, 8, 220);
+            g.fx.text('ENDURE', this.x, this.y - 44, rgb(255, 130, 100), 14);
+            g.sfx.play('HURT');
+            g.shake(7);
+            g.hitstop(0.05);
+            if (this.hp <= 0) this.die();
+            return P_HIT;
+        }
         this.hp -= dmg;
         this.posture = Math.min(this.maxPosture, this.posture + post * 0.35);
         this.postureCd = 1.0;
@@ -709,8 +815,14 @@ class Player extends Actor {
             return;
         }
         // sword pose
-        let handRel = 0.9, blade = facing + 0.55, bodyFacing = facing;
-        if (st === 'ATTACK') {
+        let handRel = 0.9, blade = facing + 0.55, bodyFacing = facing, extend = 0;
+        if (st === 'STAB') {
+            const cur = this.cur;
+            blade = facing;
+            handRel = this.phase === 0 ? 0.5 : 0.15;
+            extend = this.phase === 0 ? -12 * Math.min(1, this.stT / cur.windup)
+                : this.phase === 1 ? 24 * Math.sin(Math.PI * Math.min(1, this.stT / cur.active * 1.4)) : 4;
+        } else if (st === 'ATTACK') {
             const cur = this.cur, ss = this.swingSign;
             const a0 = ss * cur.arc / 2, a1 = -ss * cur.arc / 2;
             const rel = this.phase === 0 ? a0 + ss * 0.35 * (this.stT / cur.windup)
@@ -748,9 +860,14 @@ class Player extends Actor {
             g2.fillStyle = st === 'DODGE' ? 'rgba(160,190,255,0.235)' : css(U.alpha(this.curArt.color, 0.3));
             fillCircle(g2, x - this.vx * 0.03, y - this.vy * 0.03, r * 1.4);
         }
+        if (st === 'STAB' && this.phase < 2) {
+            g2.fillStyle = 'rgba(255,30,20,0.275)';
+            fillCircle(g2, x, y, r * 1.9);
+        }
         Draw.body(g2, x, y, r, bodyFacing, robe, shoulder, lo.color('hat'), lo.look.hatStyle, this.walkAnim);
 
-        const hx = x + Math.cos(facing + handRel) * r * 0.9, hy = y + Math.sin(facing + handRel) * r * 0.9;
+        const hx = x + Math.cos(facing + handRel) * r * 0.9 + Math.cos(facing) * extend;
+        const hy = y + Math.sin(facing + handRel) * r * 0.9 + Math.sin(facing) * extend;
         const sword = this.sword;
         Draw.katana(g2, hx, hy, blade, sword.len, this.guardFlash > 0 ? rgb(255, 230, 150) : sword.color);
         if (st === 'FREE' && this.guarding && this.g.time - this.guardStart <= this.guardWindow) {
@@ -761,5 +878,23 @@ class Player extends Actor {
             const left = this.curArt.hits[0].t - this.stT;
             if (left > 0 && left < 0.3) Draw.glint(g2, hx, hy, 8 + (0.3 - left) * 40, rgb(255, 225, 225));
         }
+        if (this.atkCharging && this.atkHoldT > 0.08) {
+            Draw.glint(g2, hx, hy, 4 + 12 * Math.min(1, this.atkHoldT / STAB_HOLD), rgb(255, 120, 100));
+        }
+    }
+
+    /** Red perilous kanji over the head while a stab winds up. */
+    drawOverlay(g2, kanjiFont, lift = 0) {
+        if (this.st !== 'STAB' || this.perilousT <= 0) return;
+        const a = U.clamp(this.perilousT * 2, 0, 1), x = this.x, ky = this.y - this.r - 34 - lift;
+        g2.fillStyle = css(U.alpha(rgb(120, 0, 0), a * 0.8));
+        fillCircle(g2, x, ky, 17);
+        g2.fillStyle = css(U.alpha(rgb(255, 40, 30), a));
+        g2.font = kanjiFont;
+        g2.textAlign = 'center';
+        g2.textBaseline = 'middle';
+        g2.fillText('\u5371', x, ky + 1);
+        g2.textAlign = 'left';
+        g2.textBaseline = 'alphabetic';
     }
 }

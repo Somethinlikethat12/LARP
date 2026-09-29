@@ -1,39 +1,67 @@
 'use strict';
 
 /**
- * Online 1v1 duel. Both peers run the same deterministic simulation in lockstep with a small, equal input delay,
- * so neither side has a latency advantage. The host also sends periodic state snapshots and the client rolls
- * back to them, correcting any floating-point drift between browsers.
- * Both fighters use identical stats: default gear, no skills, one gourd per round. Only cosmetics differ.
+ * Online matches: a 1v1 duel or a free-for-all. Every peer runs the same deterministic simulation in lockstep with a
+ * small, equal input delay, so nobody has a latency advantage. Clients send their inputs to the host, which relays them
+ * to everyone else, and the host also sends periodic state snapshots that clients roll back to, correcting any
+ * floating-point drift between browsers.
+ * Every fighter uses identical stats: default gear, no skills, host-chosen health and gourds. Only cosmetics differ.
  */
-const DUEL_ARENA_R = 560;
 const DUEL_START_X = 220;
-const DUEL_ROUNDS_TO_WIN = 2;
 const DUEL_SNAP_EVERY = 30;
 const DUEL_HISTORY = 240;
 const LAG_PAUSE_MS = 250, LAG_RESUME_MS = 170, LAG_SILENCE_MS = 1500, LAG_RESUME_HOLD_MS = 2000, RESUME_COUNTDOWN = 1.5;
+// free-for-all drops a player who has gone completely silent instead of pausing everyone forever
+const FFA_KICK_SILENCE_MS = 8000;
 const IN_GUARD = 1, IN_SPRINT = 2, IN_ATTACK = 4, IN_PARRY = 8, IN_DODGE = 16, IN_HEAL = 32, IN_IAI = 64, IN_ART = 128,
-    IN_DRAGON = 256, IN_READY = 512;
+    IN_DRAGON = 256, IN_READY = 512, IN_ATK_HELD = 1024;
 const NEUTRAL_INPUT = [0, 0, 0, 0, 0];
 const DUEL_PHASES = ['COUNTDOWN', 'FIGHT', 'KO', 'MATCH_OVER'];
-const PLAYER_STATES = ['FREE', 'ATTACK', 'ART', 'DRAGON', 'DODGE', 'STAGGER', 'HEAL', 'DEATHBLOW', 'MIKIRI', 'IAI', 'DEAD'];
+const PLAYER_STATES = ['FREE', 'ATTACK', 'STAB', 'ART', 'DRAGON', 'DODGE', 'STAGGER', 'HEAL', 'DEATHBLOW', 'MIKIRI', 'IAI', 'DEAD'];
 const PLAYER_SYNC = ['x', 'y', 'facing', 'st', 'stT', 'vx', 'vy', 'moveX', 'moveY', 'aimX', 'aimY', 'guardHeld', 'bufAttack', 'bufParry',
     'bufDodge', 'bufHeal', 'bufIai', 'bufArt', 'bufDragon', 'artIdx', 'artAtkEnd', 'dragonDone', 'combo', 'swingId', 'phase', 'swingSign',
     'comboGrace', 'guarding', 'guardStart', 'guardWindow', 'spam', 'deflectStreak', 'deflectStreakT', 'guardFlash', 'dodgeDx', 'dodgeDy',
     'dodgeHeld', 'sprinting', 'invuln', 'staggerDur', 'hurtFlash', 'postureCd', 'walkAnim', 'scarf', 'hp', 'posture', 'gourds',
-    'artCharges', 'healed', 'ki', 'dbDone', 'iaiSx', 'iaiSy', 'iaiDx', 'iaiDy', 'iaiDone', 'iaiLine', 'deadT', 'beingExecuted', 'brokenT'];
+    'artCharges', 'healed', 'ki', 'dbDone', 'iaiSx', 'iaiSy', 'iaiDx', 'iaiDy', 'iaiDone', 'iaiLine', 'deadT', 'beingExecuted', 'brokenT',
+    'bufStab', 'atkPress', 'atkHeld', 'atkCharging', 'atkHoldT', 'stabHits', 'perilousT', 'gone'];
 const YOU_COLOR = rgb(110, 190, 255), FOE_COLOR = rgb(255, 95, 80);
+const FFA_COLORS = [rgb(255, 95, 80), rgb(120, 220, 120), rgb(255, 205, 80), rgb(205, 135, 255), rgb(90, 225, 215), rgb(255, 140, 200),
+    rgb(255, 160, 70), rgb(225, 225, 225)];
+const MAX_FFA_PLAYERS = 8;
+const ARENA_SIZES = { small: 440, medium: 560, large: 760, huge: 960 };
 const NOOP = () => {};
 // stands in for fx / sfx while re-simulating frames after a correction, so effects don't play twice
 const MUTED = new Proxy({}, { get: () => NOOP });
 
-function inputDelayFor(pingMs) { return U.clamp(Math.ceil(pingMs / 2 / (DT * 1000)) + 2, 3, 8); }
+function inputDelayFor(pingMs) { return U.clamp(Math.ceil(pingMs / 2 / (DT * 1000)) + 2, 3, 10); }
 
 function sanitizeInput(d) {
     if (!Array.isArray(d) || d.length !== 5) return NEUTRAL_INPUT;
     const n = v => (Number.isFinite(v) ? v : 0);
     return [Math.sign(n(d[0])), Math.sign(n(d[1])), Math.round(U.clamp(n(d[2]), -5000, 5000)), Math.round(U.clamp(n(d[3]), -5000, 5000)),
-        n(d[4]) & 1023];
+        n(d[4]) & 2047];
+}
+
+/** Host-chosen match rules, validated so a client can trust what it receives. */
+function sanitizeSettings(s) {
+    s = s && typeof s === 'object' ? s : {};
+    const int = (v, lo, hi, def) => (Number.isInteger(v) ? U.clamp(v, lo, hi) : def);
+    const ffa = s.mode === 'ffa';
+    return {
+        mode: ffa ? 'ffa' : 'duel',
+        maxPlayers: ffa ? int(s.maxPlayers, 2, MAX_FFA_PLAYERS, MAX_FFA_PLAYERS) : 2,
+        rounds: int(s.rounds, 1, 9, 2),
+        gourds: int(s.gourds, 0, 5, 1),
+        hp: int(s.hp, 25, 400, 100),
+        arena: Object.prototype.hasOwnProperty.call(ARENA_SIZES, s.arena) ? s.arena : ffa ? 'large' : 'medium',
+        stab: s.stab !== false,
+    };
+}
+
+function describeSettings(s) {
+    return (s.mode === 'ffa' ? 'Free-for-all, up to ' + s.maxPlayers + ' players' : '1v1 Duel') + '  -  first to ' + s.rounds
+        + (s.rounds === 1 ? ' round' : ' rounds') + '  -  ' + s.hp + ' HP  -  ' + s.gourds + (s.gourds === 1 ? ' gourd' : ' gourds')
+        + '  -  ' + s.arena + ' arena  -  stab ' + (s.stab ? 'on' : 'off');
 }
 
 /** Circular ring-out-proof arena centered on the origin. */
@@ -49,7 +77,7 @@ class Arena {
     }
 }
 
-/** Stands in for Game from one fighter's point of view: the other fighter is its only "enemy". */
+/** Stands in for Game from one fighter's point of view: every other fighter still in the match is an "enemy". */
 class DuelSide {
     constructor(duel, idx, loadout) {
         this.duel = duel;
@@ -57,7 +85,6 @@ class DuelSide {
         this.loadout = loadout;
         this.skills = new Set();
         this.self = null;
-        this.foe = null;
     }
 
     get time() { return this.duel.time; }
@@ -65,8 +92,9 @@ class DuelSide {
     get fx() { return this.duel.fx; }
     get sfx() { return this.duel.sfx; }
     get rnd() { return this.duel.cosRnd; }
+    get foes() { return this.duel.players.filter(p => p !== this.self && !p.gone); }
     // only used by the Iai dash to collect victims: a dodging foe slips through it
-    get enemies() { return this.foe.st === 'DEAD' || this.foe.invulnerable() ? [] : [this.foe]; }
+    get enemies() { return this.foes.filter(f => f.st !== 'DEAD' && !f.invulnerable()); }
 
     hitstop(s) { this.duel.hitstop(s); }
     slowmo(s) { this.duel.slowmo(s); }
@@ -75,16 +103,17 @@ class DuelSide {
     flash(c, a) { this.duel.flash(c, this.idx === this.duel.localIdx ? a : a * 0.4); }
     parryBurst(x, y, k) { this.duel.parryBurst(x, y, k); }
 
-    deathblowTarget() { return this.duel.deathblowTarget(this.self, this.foe); }
+    deathblowTarget() { return this.duel.deathblowTarget(this.self); }
 
     enemyInFront(p, ang, dist) {
-        const f = this.foe;
-        return f.st !== 'DEAD' && p.distTo(f) < dist + f.r && Math.abs(U.angDiff(ang, p.angleTo(f))) < 0.9;
+        return this.foes.some(f => f.st !== 'DEAD' && p.distTo(f) < dist + f.r && Math.abs(U.angDiff(ang, p.angleTo(f))) < 0.9);
     }
 
-    playerHitCheck(p, atk) { this.duel.hitCheck(p, this.foe, atk); }
-    mikiriCandidate() { return null; }
-    onMikiri() {}
+    playerHitCheck(p, atk) {
+        for (const f of this.foes) this.duel.hitCheck(p, f, atk);
+    }
+    mikiriCandidate(p, dx, dy) { return this.duel.mikiriCandidate(p, dx, dy); }
+    onMikiri(p, f) { this.duel.onMikiri(p, f); }
     executeDeathblow(p, e) { this.duel.executeDeathblow(p, e); }
     resolveIai(p, victims) { this.duel.resolveIai(p, victims); }
     onGuardBreak(p) { this.duel.breakPosture(p); }
@@ -92,24 +121,27 @@ class DuelSide {
 }
 
 class Duel {
-    constructor(canvas, link, localIdx, delay, looks) {
+    constructor(canvas, link, localIdx, delay, looks, settings) {
         this.canvas = canvas;
         this.ctx = canvas.getContext('2d');
         this.link = link;
         this.localIdx = localIdx;
-        this.remoteIdx = 1 - localIdx;
         this.isHost = localIdx === 0;
         this.delay = delay;
+        this.settings = sanitizeSettings(settings);
+        this.n = looks.length;
+        this.ffa = this.settings.mode === 'ffa' || this.n > 2;
+        this.roundsToWin = this.settings.rounds;
         this.realSfx = new Sfx();
         this.sfx = this.realSfx;
         this.input = new Input(canvas, () => this.realSfx.unlock());
         this.realFx = new Effects();
         this.fx = this.realFx;
         this.cosRnd = new Rng(Date.now());
-        this.arena = new Arena(DUEL_ARENA_R);
+        this.arena = new Arena(ARENA_SIZES[this.settings.arena]);
         this.muted = false;
 
-        // ---- simulation state (identical on both peers) ----
+        // ---- simulation state (identical on every peer) ----
         this.simFrame = 0;
         this.time = 0;
         this.hitstopT = 0;
@@ -118,34 +150,34 @@ class Duel {
         this.phase = 'COUNTDOWN';
         this.phaseT = 0;
         this.round = 1;
-        this.score = [0, 0];
-        this.ready = [false, false];
+        this.score = new Array(this.n).fill(0);
+        this.ready = new Array(this.n).fill(false);
         this.lastKo = -1;
         this.sides = [];
         this.players = [];
-        for (let i = 0; i < 2; i++) {
+        for (let i = 0; i < this.n; i++) {
             const lo = new Loadout();
             lo.apply({ look: looks[i] }, 0);
             const side = new DuelSide(this, i, lo);
             const p = new Player(side, 0, 0);
-            p.baseGourds = 1;
+            p.baseGourds = this.settings.gourds;
+            p.baseMaxHp = this.settings.hp;
             p.brokenT = 0;
             p.beingExecuted = false;
+            p.gone = false;
             p.applyLoadout();
             side.self = p;
             this.sides.push(side);
             this.players.push(p);
         }
-        this.sides[0].foe = this.players[1];
-        this.sides[1].foe = this.players[0];
         this.player = this.players[localIdx];
-        this.foe = this.players[this.remoteIdx];
 
-        this.inputs = [new Map(), new Map()];
-        for (let f = 0; f < delay; f++) {
-            this.inputs[0].set(f, NEUTRAL_INPUT);
-            this.inputs[1].set(f, NEUTRAL_INPUT);
-        }
+        this.inputs = this.players.map(() => new Map());
+        for (let f = 0; f < delay; f++) for (const m of this.inputs) m.set(f, NEUTRAL_INPUT);
+        // frame from which a departed player's inputs are neutral and they are out of the match
+        this.dropAt = new Array(this.n).fill(Infinity);
+        this.lastIn = new Array(this.n).fill(delay - 1);
+        this.relay = [];
         this.pendingSnaps = new Map();
 
         // ---- presentation / connection state (local only) ----
@@ -161,7 +193,7 @@ class Duel {
         this.parryX = 0;
         this.parryY = 0;
         this.parryK = 0;
-        this.hpGhost = [100, 100];
+        this.hpGhost = this.players.map(p => p.maxHp);
         this.vignette = null;
         this.redVignette = null;
         this.vigW = 0;
@@ -173,11 +205,14 @@ class Duel {
         this.leaveConfirmT = 0;
         this.lostMsg = null;
 
-        link.on('in', d => this.onRemoteInput(d));
+        link.on('in', (d, c) => this.onRemoteInput(d, c));
+        link.on('ins', d => this.onRelayedInputs(d));
         link.on('snap', d => this.onSnap(d));
         link.on('lag', d => this.onLag(d));
-        link.on('bye', () => this.onLost('Your opponent left the duel.'));
-        link.onClose = () => this.onLost('Connection to your opponent was lost.');
+        link.on('drop', d => this.onDrop(d));
+        link.on('bye', (d, c) => this.onPeerLeft(c));
+        if (this.isHost) link.onPeerClose = c => this.onPeerLeft(c);
+        else link.onClose = () => this.onLost('Connection to the host was lost.');
 
         const resize = () => {
             canvas.width = window.innerWidth;
@@ -206,18 +241,20 @@ class Duel {
                 let stalled = false;
                 while (acc >= DT) {
                     const f = this.simFrame;
-                    if (!this.inputs[this.remoteIdx].has(f)) {
+                    if (!this.haveInputs(f)) {
                         stalled = true;
                         break;
                     }
                     const mine = this.sampleLocal();
                     this.inputs[this.localIdx].set(f + this.delay, mine);
-                    this.link.send({ t: 'in', f: f + this.delay, d: mine });
+                    if (this.isHost) this.relay.push([0, f + this.delay, mine]);
+                    else this.link.send({ t: 'in', f: f + this.delay, d: mine });
                     this.simulate(f);
                     acc -= DT;
                 }
                 this.stallT = stalled ? this.stallT + el : 0;
             }
+            if (this.isHost) this.flushRelay();
             this.updatePresentation(el);
             this.render();
             requestAnimationFrame(frame);
@@ -259,6 +296,7 @@ class Duel {
         if (inp.mouseDown(3) || inp.down('KeyK')) b |= IN_GUARD;
         if (inp.down('Space') || inp.down('KeyL')) b |= IN_SPRINT;
         if (inp.mouseHit(1) || inp.hit('KeyJ')) b |= IN_ATTACK;
+        if (inp.mouseDown(1) || inp.down('KeyJ')) b |= IN_ATK_HELD;
         if (inp.mouseHit(3) || inp.hit('KeyK')) b |= IN_PARRY;
         if (inp.hit('Space') || inp.hit('KeyL')) b |= IN_DODGE;
         if (inp.hit('KeyQ')) b |= IN_HEAL;
@@ -270,10 +308,79 @@ class Duel {
         return sanitizeInput([mx, my, wx, wy, b]);
     }
 
-    onRemoteInput(d) {
+    /** Host: a client's input. Store it and queue it for relay to the other clients. */
+    onRemoteInput(d, c) {
+        if (!this.isHost || !c) return;
+        const i = c.idx;
+        if (!Number.isInteger(i) || i <= 0 || i >= this.n || this.dropAt[i] !== Infinity) return;
         if (!Number.isInteger(d.f) || d.f < this.simFrame || d.f > this.simFrame + 600) return;
-        const m = this.inputs[this.remoteIdx];
-        if (!m.has(d.f)) m.set(d.f, sanitizeInput(d.d));
+        const m = this.inputs[i];
+        if (m.has(d.f)) return;
+        const v = sanitizeInput(d.d);
+        m.set(d.f, v);
+        this.lastIn[i] = Math.max(this.lastIn[i], d.f);
+        this.relay.push([i, d.f, v]);
+    }
+
+    /** Client: a batch of everyone else's inputs, relayed by the host. */
+    onRelayedInputs(d) {
+        if (this.isHost || !Array.isArray(d.a) || d.a.length > 4000) return;
+        for (const e of d.a) {
+            if (!Array.isArray(e) || e.length !== 3) continue;
+            const i = e[0], f = e[1];
+            if (!Number.isInteger(i) || i < 0 || i >= this.n || i === this.localIdx) continue;
+            if (!Number.isInteger(f) || f < this.simFrame || f > this.simFrame + 600) continue;
+            if (!this.inputs[i].has(f)) this.inputs[i].set(f, sanitizeInput(e[2]));
+        }
+    }
+
+    flushRelay() {
+        if (this.relay.length === 0) return;
+        for (const c of this.link.conns) {
+            const a = this.relay.filter(e => e[0] !== c.idx);
+            if (a.length > 0) c.send({ t: 'ins', a });
+        }
+        this.relay.length = 0;
+    }
+
+    haveInputs(f) {
+        for (let i = 0; i < this.n; i++) {
+            if (i !== this.localIdx && this.dropAt[i] > f && !this.inputs[i].has(f)) return false;
+        }
+        return true;
+    }
+
+    inputFor(i, f) { return this.dropAt[i] <= f ? NEUTRAL_INPUT : this.inputs[i].get(f); }
+
+    /** Someone left. The host picks the first frame they have no input for and tells everyone to drop them there. */
+    onPeerLeft(c) {
+        if (!this.isHost) {
+            this.onLost(this.ffa ? 'The host ended the match.' : 'Your opponent left the duel.');
+            return;
+        }
+        const i = c ? c.idx : -1;
+        this.link.drop(c);
+        if (!Number.isInteger(i) || i <= 0 || i >= this.n || this.dropAt[i] !== Infinity) return;
+        // anything already relayed must reach the others before the drop notice
+        this.flushRelay();
+        const f = Math.max(this.lastIn[i] + 1, this.simFrame);
+        this.dropAt[i] = f;
+        this.link.send({ t: 'drop', i, f });
+        this.checkAlone();
+    }
+
+    onDrop(d) {
+        if (this.isHost) return;
+        const i = d.i, f = d.f;
+        if (!Number.isInteger(i) || i <= 0 || i >= this.n || i === this.localIdx || !Number.isInteger(f) || f < 0) return;
+        this.dropAt[i] = Math.min(this.dropAt[i], f);
+        this.checkAlone();
+    }
+
+    checkAlone() {
+        if (this.dropAt.filter(f => f === Infinity).length < 2) {
+            this.onLost(this.ffa ? 'Everyone else left the match.' : 'Your opponent left the duel.');
+        }
     }
 
     onSnap(d) {
@@ -285,7 +392,7 @@ class Duel {
     /** Adopt the host's state for frame f, then quietly re-simulate forward to where we were. */
     correct(f, s) {
         const target = this.simFrame;
-        for (let i = f + 1; i < target; i++) if (!this.inputs[0].has(i) || !this.inputs[1].has(i)) return;
+        for (let i = f + 1; i < target; i++) if (!this.haveInputs(i)) return;
         if (!this.deserialize(s)) return;
         this.simFrame = f + 1;
         this.muted = true;
@@ -311,7 +418,11 @@ class Duel {
     updateLag(now, el) {
         if (this.resumeT > 0) this.resumeT -= el;
         if (!this.isHost || this.lostMsg !== null) return;
-        const ping = this.link.ping(), silent = now - this.link.lastHeard;
+        if (this.ffa) {
+            for (const c of this.link.conns) if (now - c.lastHeard > FFA_KICK_SILENCE_MS) this.onPeerLeft(c);
+            if (this.lostMsg !== null) return;
+        }
+        const ping = this.link.ping(), silent = this.link.silence(now);
         if (!this.lagPaused) {
             if (ping > LAG_PAUSE_MS || silent > LAG_SILENCE_MS) {
                 this.lagPaused = true;
@@ -335,8 +446,10 @@ class Duel {
 
     // ================= simulation =================
     simulate(f) {
-        this.applyInput(0, this.inputs[0].get(f));
-        this.applyInput(1, this.inputs[1].get(f));
+        for (let i = 0; i < this.n; i++) {
+            if (this.dropAt[i] <= f && !this.players[i].gone) this.removePlayer(i);
+            this.applyInput(i, this.inputFor(i, f));
+        }
         this.step(DT);
         this.simFrame = f + 1;
         if (this.isHost) {
@@ -346,18 +459,32 @@ class Duel {
             this.pendingSnaps.delete(f);
             if (this.deserialize(s)) this.simFrame = f + 1;
         }
-        this.inputs[0].delete(f - DUEL_HISTORY);
-        this.inputs[1].delete(f - DUEL_HISTORY);
+        for (const m of this.inputs) m.delete(f - DUEL_HISTORY);
+    }
+
+    removePlayer(i) {
+        const p = this.players[i];
+        if (p.st !== 'DEAD') this.fx.text('LEFT THE MATCH', p.x, p.y - 44, rgb(200, 190, 175), 15);
+        if (p.st === 'DEATHBLOW' && p.dbTarget !== null) p.dbTarget.beingExecuted = false;
+        p.dbTarget = null;
+        p.gone = true;
+        p.hp = 0;
+        p.st = 'DEAD';
+        p.stT = 0;
+        p.beingExecuted = false;
+        p.brokenT = 0;
+        this.ready[i] = false;
     }
 
     applyInput(i, d) {
-        const p = this.players[i], foe = this.players[1 - i];
+        const p = this.players[i];
+        if (p.gone) return;
         if (this.phase === 'COUNTDOWN' || this.phase === 'MATCH_OVER') {
             if (this.phase === 'MATCH_OVER' && (d[4] & IN_READY)) this.ready[i] = !this.ready[i];
             p.moveX = p.moveY = 0;
-            p.guardHeld = p.dodgeHeld = false;
-            p.aimX = foe.x;
-            p.aimY = foe.y;
+            p.guardHeld = p.dodgeHeld = p.atkHeld = false;
+            p.aimX = 0;
+            p.aimY = 0;
             return;
         }
         const l = Math.hypot(d[0], d[1]);
@@ -368,7 +495,9 @@ class Duel {
         const b = d[4];
         p.guardHeld = (b & IN_GUARD) !== 0;
         p.dodgeHeld = (b & IN_SPRINT) !== 0;
-        if (b & IN_ATTACK) p.bufAttack = 0.22;
+        // with stabbing disabled a held button never charges, so every press is a normal slash
+        p.atkHeld = this.settings.stab && (b & IN_ATK_HELD) !== 0;
+        if (b & IN_ATTACK) p.atkPress = true;
         if (b & IN_PARRY) p.bufParry = 0.15;
         if (b & IN_DODGE) p.bufDodge = 0.18;
         if (b & IN_HEAL) p.bufHeal = 0.12;
@@ -394,22 +523,22 @@ class Duel {
             this.phaseT = 0;
             this.sfx.play('CLANG');
         } else if (this.phase === 'KO' && this.phaseT >= 2.6) {
-            if (Math.max(this.score[0], this.score[1]) >= DUEL_ROUNDS_TO_WIN) {
+            if (this.matchWinner() >= 0) {
                 this.phase = 'MATCH_OVER';
                 this.phaseT = 0;
-                this.ready = [false, false];
+                this.ready.fill(false);
             } else {
                 this.round++;
                 this.resetRound();
                 return;
             }
-        } else if (this.phase === 'MATCH_OVER' && this.ready[0] && this.ready[1]) {
+        } else if (this.phase === 'MATCH_OVER' && this.players.every((p, i) => p.gone || this.ready[i])) {
             this.resetMatch();
             return;
         }
 
-        const [a, b] = this.players;
-        for (const p of this.players) {
+        const active = this.players.filter(p => !p.gone);
+        for (const p of active) {
             // a fighter being executed is held in place until the blow lands
             if (p.beingExecuted && p.st !== 'DEAD') {
                 p.st = 'STAGGER';
@@ -417,21 +546,21 @@ class Duel {
                 p.vx = p.vy = 0;
             }
         }
-        a.update(sdt);
-        b.update(sdt);
-        for (const p of this.players) {
+        for (const p of active) p.update(sdt);
+        for (const p of active) {
             if (p.brokenT > 0 && (p.st !== 'STAGGER' || (p.brokenT -= sdt) <= 0)) {
                 p.brokenT = 0;
                 if (p.st !== 'DEAD') p.posture = p.maxPosture * 0.5;
             }
         }
         this.separate();
-        if (this.phase === 'FIGHT' && (a.st === 'DEAD' || b.st === 'DEAD')) {
+        const alive = active.filter(p => p.st !== 'DEAD');
+        if (this.phase === 'FIGHT' && alive.length <= 1) {
             this.phase = 'KO';
             this.phaseT = 0;
-            if (a.st === 'DEAD' && b.st === 'DEAD') this.lastKo = -1;
+            if (alive.length === 0) this.lastKo = -1;
             else {
-                this.lastKo = a.st === 'DEAD' ? 1 : 0;
+                this.lastKo = this.players.indexOf(alive[0]);
                 this.score[this.lastKo]++;
             }
             this.slowmo(0.9);
@@ -439,17 +568,30 @@ class Duel {
         this.fx.update(sdt);
     }
 
+    /** Index of whoever has won the match, or -1. */
+    matchWinner() { return this.score.findIndex(s => s >= this.roundsToWin); }
+
+    spawnRadius() { return this.n === 2 ? DUEL_START_X : this.arena.r * 0.6; }
+
+    spawnAngle(i) { return Math.PI + i * TAU / this.n; }
+
     resetRound() {
-        for (let i = 0; i < 2; i++) {
-            const p = this.players[i], x = i === 0 ? -DUEL_START_X : DUEL_START_X;
-            p.respawn(x, 0);
+        const sr = this.spawnRadius();
+        for (let i = 0; i < this.n; i++) {
+            const p = this.players[i], a = this.spawnAngle(i);
+            if (p.gone) continue;
+            p.respawn(Math.cos(a) * sr, Math.sin(a) * sr);
             p.invuln = 0;
-            p.facing = i === 0 ? 0 : Math.PI;
-            p.aimX = -x;
+            p.facing = a + Math.PI;
+            p.aimX = 0;
             p.aimY = 0;
             p.moveX = p.moveY = 0;
             p.guardHeld = p.dodgeHeld = p.guarding = p.sprinting = false;
-            p.bufAttack = p.bufParry = p.bufDodge = p.bufHeal = p.bufIai = p.bufArt = p.bufDragon = 0;
+            p.bufAttack = p.bufParry = p.bufDodge = p.bufHeal = p.bufIai = p.bufArt = p.bufDragon = p.bufStab = 0;
+            p.atkPress = p.atkHeld = p.atkCharging = false;
+            p.atkHoldT = 0;
+            p.stabHits = 0;
+            p.perilousT = 0;
             p.brokenT = 0;
             p.beingExecuted = false;
             p.dbTarget = null;
@@ -475,27 +617,33 @@ class Duel {
     }
 
     resetMatch() {
-        this.score = [0, 0];
-        this.ready = [false, false];
+        this.score.fill(0);
+        this.ready.fill(false);
         this.round = 1;
         this.lastKo = -1;
         this.resetRound();
     }
 
     separate() {
-        const [a, b] = this.players;
-        if (a.st === 'DEAD' || b.st === 'DEAD') return;
-        const through = p => p.st === 'IAI' || p.st === 'DEATHBLOW' || p.st === 'DODGE';
-        if (through(a) || through(b)) return;
-        const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy), min = a.r + b.r;
-        if (d < min && d > 0.01) {
-            const push = (min - d) / 2;
-            a.x -= dx / d * push;
-            a.y -= dy / d * push;
-            b.x += dx / d * push;
-            b.y += dy / d * push;
-            this.arena.resolve(a);
-            this.arena.resolve(b);
+        const through = p => p.gone || p.st === 'DEAD' || p.st === 'IAI' || p.st === 'DEATHBLOW' || p.st === 'DODGE';
+        const ps = this.players;
+        for (let i = 0; i < ps.length; i++) {
+            const a = ps[i];
+            if (through(a)) continue;
+            for (let j = i + 1; j < ps.length; j++) {
+                const b = ps[j];
+                if (through(b)) continue;
+                const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy), min = a.r + b.r;
+                if (d < min && d > 0.01) {
+                    const push = (min - d) / 2;
+                    a.x -= dx / d * push;
+                    a.y -= dy / d * push;
+                    b.x += dx / d * push;
+                    b.y += dy / d * push;
+                    this.arena.resolve(a);
+                    this.arena.resolve(b);
+                }
+            }
         }
     }
 
@@ -524,18 +672,70 @@ class Duel {
 
     zoom() { return this.camZ * (1 + this.zoomKickV); }
 
-    deathblowTarget(p, foe) {
-        if (foe.brokenT <= 0 || foe.st === 'DEAD' || foe.beingExecuted) return null;
-        return p.distTo(foe) < 105 + foe.r ? foe : null;
+    /** Nearest posture-broken foe within deathblow reach. */
+    deathblowTarget(p) {
+        let best = null, bd = Infinity;
+        for (const f of this.players) {
+            if (f === p || f.gone || f.brokenT <= 0 || f.st === 'DEAD' || f.beingExecuted) continue;
+            const d = p.distTo(f);
+            if (d < 105 + f.r && d < bd) {
+                bd = d;
+                best = f;
+            }
+        }
+        return best;
+    }
+
+    /** A foe whose stab this dodge steps into: dodging toward a perilous thrust at the right moment counters it. */
+    mikiriCandidate(p, dx, dy) {
+        for (const f of this.players) {
+            if (f === p || f.gone || f.st !== 'STAB' || f.cur === null) continue;
+            const cur = f.cur;
+            if (!((f.phase === 0 && cur.windup - f.stT < 0.32) || f.phase === 1)) continue;
+            if (p.distTo(f) > cur.range + 80) continue;
+            // must be standing in the thrust's path
+            if (Math.abs(U.angDiff(f.facing, f.angleTo(p))) > 0.8) continue;
+            const a = p.angleTo(f);
+            if (dx * Math.cos(a) + dy * Math.sin(a) > 0.5) return f;
+        }
+        return null;
+    }
+
+    onMikiri(p, f) {
+        const fx = this.fx, a = p.angleTo(f);
+        const cx = (p.x + f.x) / 2, cy = (p.y + f.y) / 2;
+        f.posture = Math.min(f.maxPosture, f.posture + f.maxPosture * 0.5);
+        f.postureCd = 1.0;
+        f.perilousT = 0;
+        f.guarding = false;
+        f.atkCharging = false;
+        f.st = 'STAGGER';
+        f.stT = 0;
+        f.staggerDur = 1.1;
+        f.vx = Math.cos(a) * 260;
+        f.vy = Math.sin(a) * 260;
+        p.ki = Math.min(100, p.ki + 25);
+        p.gainArtCharge();
+        fx.sparks(cx, cy, a + Math.PI, 3.0, 40, 600, rgb(140, 220, 255));
+        fx.ring(cx, cy, 5, 90, 0.4, 5, rgb(180, 230, 255));
+        fx.dust(p.x, p.y, 12);
+        fx.text('MIKIRI COUNTER', p.x, p.y - 48, rgb(140, 220, 255), 20);
+        this.sfx.play('CLANG');
+        this.sfx.play('BLOCK');
+        this.hitstop(0.12);
+        this.shake(11);
+        this.slowmo(0.35);
+        this.flash(rgb(180, 230, 255), p === this.player ? 0.2 : 0.08);
+        if (f.posture >= f.maxPosture) this.breakPosture(f);
     }
 
     hitCheck(p, foe, atk) {
-        if (foe.st === 'DEAD' || p.hitSet.has(foe)) return;
+        if (foe.gone || foe.st === 'DEAD' || p.hitSet.has(foe)) return;
         const d = p.distTo(foe);
         if (d > atk.range + foe.r) return;
         const tol = atk.arc / 2 + Math.asin(Math.min(1, foe.r / Math.max(d, 1)));
         if (Math.abs(U.angDiff(p.facing, p.angleTo(foe))) > tol) return;
-        // piercing attacks (Mortal Draw, Dragon Flash) cannot be guarded, like perilous enemy attacks
+        // piercing attacks (Stab, Mortal Draw, Dragon Flash) cannot be guarded, like perilous enemy attacks
         const res = foe.receive(p.x, p.y, atk.damage, atk.posture, !!atk.pierce);
         if (res === P_IGNORE) return;
         p.hitSet.add(foe);
@@ -622,12 +822,19 @@ class Duel {
             e.posture = Math.min(e.maxPosture, e.posture + 70);
             e.postureCd = 1.0;
             e.hurtFlash = 0.3;
-            e.guarding = false;
-            e.st = 'STAGGER';
-            e.stT = 0;
-            e.staggerDur = 0.45;
-            if (e.hp <= 0) e.die();
-            else if (e.posture >= e.maxPosture) this.breakPosture(e);
+            if (e.hp <= 0) {
+                e.die();
+                continue;
+            }
+            // a stab endures the first blow
+            const endured = e.st === 'STAB' && e.phase < 2 && ++e.stabHits < 2;
+            if (!endured) {
+                e.guarding = false;
+                e.st = 'STAGGER';
+                e.stT = 0;
+                e.staggerDur = 0.45;
+            }
+            if (e.posture >= e.maxPosture) this.breakPosture(e);
         }
     }
 
@@ -646,14 +853,14 @@ class Duel {
     }
 
     packPlayer(p) {
-        const a = PLAYER_SYNC.map(k => p[k]);
-        a.push(p.artAtk !== null, p.hitSet.size > 0, p.dbTarget !== null, p.iaiVictims.length > 0);
+        const a = PLAYER_SYNC.map(k => p[k]), idx = q => this.players.indexOf(q);
+        a.push(p.artAtk !== null, [...p.hitSet].map(idx), p.dbTarget === null ? -1 : idx(p.dbTarget), p.iaiVictims.map(idx));
         return a;
     }
 
     deserialize(s) {
         const num = v => typeof v === 'number' && Number.isFinite(v);
-        if (!s || typeof s !== 'object' || !Array.isArray(s.p) || s.p.length !== 2 || !DUEL_PHASES.includes(s.ph)) return false;
+        if (!s || typeof s !== 'object' || !Array.isArray(s.p) || s.p.length !== this.n || !DUEL_PHASES.includes(s.ph)) return false;
         if (![s.t, s.h, s.s, s.ts, s.pt, s.r, s.k].every(num) || !Array.isArray(s.sc) || !Array.isArray(s.rd)) return false;
         for (const a of s.p) if (!Array.isArray(a) || a.length !== PLAYER_SYNC.length + 4) return false;
         this.time = s.t;
@@ -663,16 +870,16 @@ class Duel {
         this.phase = s.ph;
         this.phaseT = s.pt;
         this.round = s.r;
-        this.lastKo = s.k;
-        for (let i = 0; i < 2; i++) {
+        this.lastKo = Number.isInteger(s.k) && s.k >= -1 && s.k < this.n ? s.k : -1;
+        for (let i = 0; i < this.n; i++) {
             this.score[i] = num(s.sc[i]) ? s.sc[i] : this.score[i];
             this.ready[i] = !!s.rd[i];
-            this.unpackPlayer(this.players[i], this.players[1 - i], s.p[i]);
+            this.unpackPlayer(this.players[i], s.p[i]);
         }
         return true;
     }
 
-    unpackPlayer(p, foe, a) {
+    unpackPlayer(p, a) {
         const n = PLAYER_SYNC.length;
         for (let i = 0; i < n; i++) {
             const k = PLAYER_SYNC[i], v = a[i];
@@ -680,22 +887,61 @@ class Duel {
             if (k === 'st' && !PLAYER_STATES.includes(v)) continue;
             p[k] = v;
         }
-        p.cur = p.combo >= 0 && p.combo < p.comboAtk.length ? p.comboAtk[p.combo] : null;
+        const ref = v => (Number.isInteger(v) && v >= 0 && v < this.n && this.players[v] !== p ? this.players[v] : null);
+        const refs = v => (Array.isArray(v) ? v.slice(0, this.n).map(ref).filter(q => q !== null) : []);
+        p.cur = p.st === 'STAB' ? p.stabAtk : p.combo >= 0 && p.combo < p.comboAtk.length ? p.comboAtk[p.combo] : null;
         p.curArt = p.art;
         p.curArtAtks = p.artAtks;
         p.artAtk = a[n] && p.artIdx > 0 ? p.artAtks[p.artIdx - 1] || null : null;
         p.hitSet.clear();
-        if (a[n + 1]) p.hitSet.add(foe);
-        p.dbTarget = a[n + 2] ? foe : null;
-        p.iaiVictims = a[n + 3] ? [foe] : [];
+        for (const q of refs(a[n + 1])) p.hitSet.add(q);
+        p.dbTarget = ref(a[n + 2]);
+        p.iaiVictims = refs(a[n + 3]);
         if ((p.st === 'ATTACK' && p.cur === null) || (p.st === 'DEATHBLOW' && p.dbTarget === null) || p.st === 'DRAGON') p.toFree();
     }
 
     // ================= presentation =================
+    colorOf(p) {
+        if (p === this.player) return YOU_COLOR;
+        return this.ffa ? FFA_COLORS[this.players.indexOf(p) % FFA_COLORS.length] : FOE_COLOR;
+    }
+
+    nameOf(i) { return i === this.localIdx ? 'You' : this.ffa ? 'P' + (i + 1) : 'Opponent'; }
+
+    /** The duel opponent (1v1 mode only). */
+    get foe() { return this.players[1 - this.localIdx]; }
+
+    /** Who the camera keeps in frame: you and your nearest living foe, or the survivors while you spectate. */
+    cameraFocus() {
+        const p = this.player, others = this.players.filter(q => q !== p && !q.gone);
+        if (!this.ffa) return [p, this.foe];
+        if (p.st !== 'DEAD') {
+            let best = null, bd = 700;
+            for (const q of others) {
+                if (q.st === 'DEAD') continue;
+                const d = p.distTo(q);
+                if (d < bd) {
+                    bd = d;
+                    best = q;
+                }
+            }
+            return best === null ? [p] : [p, best];
+        }
+        const alive = others.filter(q => q.st !== 'DEAD');
+        return alive.length > 0 ? alive : [p];
+    }
+
     updatePresentation(el) {
-        const p = this.player, f = this.foe, sw = this.canvas.width, sh = this.canvas.height;
-        const tx = (p.x + f.x) / 2, ty = (p.y + f.y) / 2;
-        const tz = U.clamp(Math.min(sw / (Math.abs(p.x - f.x) + 460), sh / (Math.abs(p.y - f.y) + 380)), 0.55, 1.15);
+        const sw = this.canvas.width, sh = this.canvas.height, focus = this.cameraFocus();
+        let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+        for (const q of focus) {
+            x0 = Math.min(x0, q.x);
+            y0 = Math.min(y0, q.y);
+            x1 = Math.max(x1, q.x);
+            y1 = Math.max(y1, q.y);
+        }
+        const tx = (x0 + x1) / 2, ty = (y0 + y1) / 2;
+        const tz = U.clamp(Math.min(sw / (x1 - x0 + 460), sh / (y1 - y0 + 380)), this.ffa ? 0.4 : 0.55, 1.15);
         const k = 1 - Math.exp(-el * 5);
         this.camX += (tx - this.camX) * k;
         this.camY += (ty - this.camY) * k;
@@ -704,7 +950,7 @@ class Duel {
         this.parryT -= el;
         this.zoomKickV *= Math.exp(-el * 5);
         this.flashA = Math.max(0, this.flashA - el * 2.5);
-        for (let i = 0; i < 2; i++) {
+        for (let i = 0; i < this.n; i++) {
             const q = this.players[i];
             this.hpGhost[i] = this.hpGhost[i] > q.hp ? Math.max(q.hp, this.hpGhost[i] - el * 40) : q.hp;
         }
@@ -726,17 +972,20 @@ class Duel {
         const l = this.camX - sw / 2 / z - 40, t = this.camY - sh / 2 / z - 40, r = this.camX + sw / 2 / z + 40, b = this.camY + sh / 2 / z + 40;
         this.drawArena(g, l, t, r, b);
         this.realFx.drawDecals(g);
-        for (const p of this.players) {
-            const c = p === this.player ? YOU_COLOR : FOE_COLOR;
+        const shown = this.players.filter(p => !p.gone);
+        for (const p of shown) {
             setStroke(g, 2.5, false);
-            g.strokeStyle = css(U.alpha(c, p.st === 'DEAD' ? 0.25 : 0.7));
+            g.strokeStyle = css(U.alpha(this.colorOf(p), p.st === 'DEAD' ? 0.25 : 0.7));
             strokeEllipse(g, p.x - p.r - 8, p.y - p.r * 0.6 + 6, (p.r + 8) * 2, (p.r * 0.6 + 2) * 2);
         }
-        const order = this.players.slice().sort((p, q) => (q.st === 'DEAD') - (p.st === 'DEAD') || p.y - q.y);
+        const order = shown.slice().sort((p, q) => (q.st === 'DEAD') - (p.st === 'DEAD') || p.y - q.y);
         for (const p of order) p.draw(g, this.time);
         this.realFx.drawWorld(g);
         this.realFx.drawPetals(g);
-        for (const p of this.players) this.drawTag(g, p);
+        for (const p of shown) {
+            this.drawTag(g, p);
+            p.drawOverlay(g, KANJI_FONT, 18);
+        }
         this.realFx.drawTexts(g);
         g.restore();
 
@@ -750,7 +999,7 @@ class Duel {
     }
 
     drawArena(g, l, t, r, b) {
-        const R = DUEL_ARENA_R;
+        const R = this.arena.r;
         g.fillStyle = 'rgb(38,52,34)';
         g.fillRect(l, t, r - l, b - t);
         g.fillStyle = 'rgb(84,70,48)';
@@ -770,8 +1019,11 @@ class Duel {
         // starting lines
         setStroke(g, 6, false);
         g.strokeStyle = 'rgba(245,240,225,0.75)';
-        strokeLine(g, -DUEL_START_X + 50, -34, -DUEL_START_X + 50, 34);
-        strokeLine(g, DUEL_START_X - 50, -34, DUEL_START_X - 50, 34);
+        const sr = this.spawnRadius() - 50;
+        for (let i = 0; i < this.n; i++) {
+            const a = this.spawnAngle(i), cx = Math.cos(a) * sr, cy = Math.sin(a) * sr, px = -Math.sin(a) * 34, py = Math.cos(a) * 34;
+            strokeLine(g, cx - px, cy - py, cx + px, cy + py);
+        }
         // sacred rope
         setStroke(g, 7, true);
         g.strokeStyle = 'rgb(232,222,196)';
@@ -809,9 +1061,9 @@ class Duel {
 
     drawTag(g, p) {
         if (p.st === 'DEAD') return;
-        const you = p === this.player;
+        const you = p === this.player, i = this.players.indexOf(p);
         g.font = 'bold 12px sans-serif';
-        this.text(g, you ? 'YOU' : 'FOE', p.x, p.y - p.r - 22, you ? YOU_COLOR : FOE_COLOR, true);
+        this.text(g, you ? 'YOU' : this.ffa ? 'P' + (i + 1) : 'FOE', p.x, p.y - p.r - 22, this.colorOf(p), true);
         if (p.brokenT > 0) {
             const pulse = 0.6 + 0.4 * Math.sin(this.realTime * 14);
             g.fillStyle = css(rgb(220, 20, 20, Math.trunc(255 * pulse)));
@@ -827,7 +1079,7 @@ class Duel {
     drawFighterBars(g, p, x, y, w, label, color, wins, right) {
         g.font = 'bold 18px serif';
         this.text(g, label, right ? x + w - g.measureText(label).width : x, y - 8, color, false);
-        for (let i = 0; i < DUEL_ROUNDS_TO_WIN; i++) {
+        for (let i = 0; i < this.roundsToWin; i++) {
             const cx = right ? x + 10 + i * 20 : x + w - 10 - i * 20;
             g.fillStyle = i < wins ? 'rgb(255,210,90)' : 'rgba(0,0,0,0.6)';
             fillCircle(g, cx, y - 14, 7);
@@ -855,12 +1107,38 @@ class Duel {
         g.fillRect(right ? x + w - kw : x, y + 42, kw, 3);
     }
 
+    /** Free-for-all standings: every fighter's wins and health. */
+    drawScoreboard(g, sw) {
+        const w = 230, x = sw - 28 - w, rowH = 30;
+        let y = 30;
+        g.fillStyle = 'rgba(0,0,0,0.45)';
+        g.fillRect(x - 10, y - 18, w + 20, this.n * rowH + 12);
+        const order = this.players.map((p, i) => i).sort((a, b) => this.score[b] - this.score[a] || a - b);
+        for (const i of order) {
+            const p = this.players[i], c = p.gone ? rgb(120, 115, 105) : this.colorOf(p);
+            g.fillStyle = css(c);
+            fillCircle(g, x + 6, y - 5, 6);
+            g.font = i === this.localIdx ? 'bold 15px serif' : '15px serif';
+            this.text(g, (i === this.localIdx ? 'You (P' + (i + 1) + ')' : 'P' + (i + 1)) + (p.gone ? '  - left' : ''), x + 18, y, c, false);
+            this.text(g, this.score[i] + ' / ' + this.roundsToWin, x + w - 44, y, rgb(255, 215, 120), false);
+            if (!p.gone) {
+                g.fillStyle = 'rgba(0,0,0,0.667)';
+                g.fillRect(x + 18, y + 5, w - 70, 5);
+                g.fillStyle = p.st === 'DEAD' ? 'rgb(90,80,80)' : 'rgb(190,30,34)';
+                g.fillRect(x + 18, y + 5, Math.trunc((w - 70) * U.clamp(p.hp / p.maxHp, 0, 1)), 5);
+            }
+            y += rowH;
+        }
+    }
+
     drawHud(g, sw, sh) {
-        const me = this.player, foe = this.foe, w = Math.min(380, sw / 2 - 150);
-        this.drawFighterBars(g, me, 28, 44, w, 'You', YOU_COLOR, this.score[this.localIdx], false);
-        this.drawFighterBars(g, foe, sw - 28 - w, 44, w, 'Opponent', FOE_COLOR, this.score[this.remoteIdx], true);
+        const me = this.player, w = Math.min(380, sw / 2 - 150);
+        this.drawFighterBars(g, me, 28, 44, w, this.ffa ? 'You (P' + (this.localIdx + 1) + ')' : 'You', YOU_COLOR,
+            this.score[this.localIdx], false);
+        if (this.ffa) this.drawScoreboard(g, sw);
+        else this.drawFighterBars(g, this.foe, sw - 28 - w, 44, w, 'Opponent', FOE_COLOR, this.score[1 - this.localIdx], true);
         g.font = 'bold 20px serif';
-        this.text(g, 'ROUND ' + this.round, sw / 2, 40, rgb(245, 235, 215), true);
+        this.text(g, (this.ffa ? 'FREE-FOR-ALL  -  ' : '') + 'ROUND ' + this.round, sw / 2, 40, rgb(245, 235, 215), true);
         const ping = Math.round(this.link.ping());
         g.font = SMALL_FONT;
         this.text(g, 'Ping ' + ping + ' ms   -   input delay ' + Math.round(this.delay * DT * 1000) + ' ms', sw / 2, 60,
@@ -885,20 +1163,23 @@ class Duel {
             this.text(g, '[F] IAI FLASH READY', hx, hy - 38, rgb(170, 220, 255), false);
         }
         g.font = SMALL_FONT;
-        const help = 'LMB attack   RMB deflect / hold block   Space dodge / sprint   Esc twice to leave';
+        const help = 'LMB attack   Hold LMB stab   RMB deflect / hold block   Space dodge / sprint   Esc twice to leave';
         this.text(g, help, sw - 28 - g.measureText(help).width, sh - 20, rgb(180, 170, 150), false);
         if (me.deflectStreak >= 2) {
             g.font = 'bold 26px serif';
             this.text(g, me.deflectStreak + ' DEFLECT CHAIN', sw / 2, sh - 100, rgb(255, 215, 100), true);
         }
-        if (this.phase === 'FIGHT' && me.st !== 'DEAD' && this.deathblowTarget(me, foe) !== null) {
+        if (this.phase === 'FIGHT' && me.st !== 'DEAD' && this.deathblowTarget(me) !== null) {
             g.font = 'bold 20px serif';
             this.text(g, '[LMB]  DEATHBLOW', sw / 2, sh - 70, rgb(255, 90, 80), true);
+        } else if (this.ffa && this.phase === 'FIGHT' && me.st === 'DEAD') {
+            g.font = 'bold 20px serif';
+            this.text(g, 'You have fallen  -  spectating until the round ends', sw / 2, sh - 70, rgb(230, 200, 180), true);
         }
         this.drawPhase(g, sw, sh);
         if (this.leaveConfirmT > 0 && this.lostMsg === null) {
             g.font = HUD_FONT;
-            this.text(g, 'Press Esc again to leave the duel', sw / 2, 112, rgb(255, 150, 120), true);
+            this.text(g, 'Press Esc again to leave the match', sw / 2, 112, rgb(255, 150, 120), true);
         }
         this.drawConnection(g, sw, sh);
     }
@@ -923,10 +1204,11 @@ class Duel {
             g.fillStyle = css(rgb(0, 0, 0, Math.trunc(110 * a)));
             g.fillRect(0, cy - 60, sw, 90);
             g.font = TITLE_FONT;
-            this.text(g, draw ? 'DOUBLE KO' : won ? 'ROUND WON' : 'ROUND LOST', sw / 2, cy, U.alpha(draw ? WHITE : won ? rgb(255, 215, 120)
-                : rgb(230, 70, 60), a), true);
+            const msg = draw ? (this.ffa ? 'NO SURVIVORS' : 'DOUBLE KO') : won ? 'ROUND WON'
+                : this.ffa ? 'P' + (this.lastKo + 1) + ' WINS THE ROUND' : 'ROUND LOST';
+            this.text(g, msg, sw / 2, cy, U.alpha(draw ? WHITE : won ? rgb(255, 215, 120) : rgb(230, 70, 60), a), true);
         } else if (this.phase === 'MATCH_OVER') {
-            const won = this.score[this.localIdx] > this.score[this.remoteIdx];
+            const winner = this.matchWinner(), won = winner === this.localIdx;
             g.fillStyle = 'rgba(0,0,0,0.55)';
             g.fillRect(0, 0, sw, sh);
             g.font = BIG_KANJI;
@@ -934,12 +1216,19 @@ class Duel {
             g.font = TITLE_FONT;
             this.text(g, won ? 'VICTORY' : 'DEFEAT', sw / 2, cy + 100, WHITE, true);
             g.font = SUB_FONT;
-            this.text(g, this.score[this.localIdx] + '  -  ' + this.score[this.remoteIdx], sw / 2, cy + 136, rgb(230, 220, 210), true);
-            const meReady = this.ready[this.localIdx], foeReady = this.ready[this.remoteIdx];
+            const line = this.ffa ? (won ? 'Last samurai standing' : 'P' + (winner + 1) + ' wins the match') + '  -  your rounds: '
+                + this.score[this.localIdx] : this.score[this.localIdx] + '  -  ' + this.score[1 - this.localIdx];
+            this.text(g, line, sw / 2, cy + 136, rgb(230, 220, 210), true);
+            const meReady = this.ready[this.localIdx];
+            const others = this.players.filter((p, i) => i !== this.localIdx && !p.gone);
+            const othersReady = others.filter(p => this.ready[this.players.indexOf(p)]).length;
             g.font = HUD_FONT;
-            this.text(g, meReady ? 'Waiting for your opponent...  (Enter to cancel)' : 'Press ENTER for a rematch', sw / 2, cy + 180,
-                rgb(255, 220, 150, Math.trunc(160 + 90 * Math.sin(this.realTime * 4))), true);
-            if (foeReady) this.text(g, 'Your opponent wants a rematch', sw / 2, cy + 204, FOE_COLOR, true);
+            this.text(g, meReady ? (this.ffa ? 'Waiting for the others...' : 'Waiting for your opponent...') + '  (Enter to cancel)'
+                : 'Press ENTER for a rematch', sw / 2, cy + 180, rgb(255, 220, 150, Math.trunc(160 + 90 * Math.sin(this.realTime * 4))), true);
+            if (othersReady > 0) {
+                this.text(g, this.ffa ? othersReady + ' / ' + others.length + ' others want a rematch' : 'Your opponent wants a rematch', sw / 2,
+                    cy + 204, FOE_COLOR, true);
+            }
             g.font = SMALL_FONT;
             this.text(g, 'Esc twice to return to the main menu', sw / 2, cy + 228, rgb(190, 180, 165), true);
         }
@@ -950,7 +1239,7 @@ class Duel {
             g.fillStyle = 'rgba(10,8,8,0.85)';
             g.fillRect(0, 0, sw, sh);
             g.font = TITLE_FONT;
-            this.text(g, 'DUEL ENDED', sw / 2, sh / 2 - 20, rgb(230, 60, 50), true);
+            this.text(g, this.ffa ? 'MATCH ENDED' : 'DUEL ENDED', sw / 2, sh / 2 - 20, rgb(230, 60, 50), true);
             g.font = SUB_FONT;
             this.text(g, this.lostMsg, sw / 2, sh / 2 + 20, rgb(230, 220, 210), true);
             g.font = HUD_FONT;
@@ -964,14 +1253,14 @@ class Duel {
             if (this.lagPaused) {
                 this.text(g, 'CONNECTION UNSTABLE', sw / 2, sh / 2 - 10, rgb(255, 150, 110), true);
                 g.font = SUB_FONT;
-                this.text(g, 'The duel is paused until the connection recovers  -  ping ' + Math.round(this.link.ping()) + ' ms', sw / 2,
+                this.text(g, 'The match is paused until the connection recovers  -  ping ' + Math.round(this.link.ping()) + ' ms', sw / 2,
                     sh / 2 + 30, rgb(230, 220, 210), true);
             } else {
                 this.text(g, 'Resuming in ' + this.resumeT.toFixed(1), sw / 2, sh / 2, rgb(200, 235, 190), true);
             }
         } else if (this.stallT > 0.35) {
             g.font = HUD_FONT;
-            this.text(g, 'Waiting for opponent...', sw / 2, 90, rgb(255, 180, 120), true);
+            this.text(g, this.ffa ? 'Waiting for players...' : 'Waiting for opponent...', sw / 2, 90, rgb(255, 180, 120), true);
         }
     }
 }

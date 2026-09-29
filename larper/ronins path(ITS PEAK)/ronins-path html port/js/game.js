@@ -724,6 +724,7 @@ class Game {
         this.fx.drawPetals(g);
         const db = this.deathblowTarget();
         for (const e of visEnemies) e.drawOverlay(g, this.time, KANJI_FONT, e === db && this.stealthable(e));
+        player.drawOverlay(g, KANJI_FONT);
         this.fx.drawTexts(g);
         g.restore();
 
@@ -1085,6 +1086,7 @@ class Game {
             ['WASD', 'Move'],
             ['Mouse', 'Aim / face direction'],
             ['Left Click / J', 'Attack (3-hit combo, buffered)'],
+            ['Hold Left Click / J', 'STAB - an unblockable perilous thrust. Endures one hit, but a second hit breaks it'],
             ['Right Click / K', 'Tap right before a hit to DEFLECT. Hold to block (costs posture).'],
             ['Space / L', 'Tap to dodge (invincible frames, dashes forward with no direction). Hold to sprint.'],
             ['Dodge INTO a thrust', 'MIKIRI COUNTER a perilous thrust (red kanji)'],
@@ -1096,13 +1098,13 @@ class Game {
             ['E', 'Rest at shrine (heal, refill gourds, set respawn) - not while enemies are near'],
             ['Hold block + walk', 'Sneak. Reach an unaware enemy for a STEALTH DEATHBLOW'],
         ];
-        let y = 178;
+        let y = 172;
         for (const r of rows) {
             g.font = HUD_FONT;
             this.text(g, r[0], sw / 2 - 320, y, rgb(255, 200, 110), false);
             g.font = SMALL_FONT;
             this.text(g, r[1], sw / 2 - 110, y, rgb(230, 225, 215), false);
-            y += 28;
+            y += 26;
         }
         y += 14;
         g.font = 'bold 20px serif';
