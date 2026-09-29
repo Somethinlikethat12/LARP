@@ -6,11 +6,64 @@
     <title>Ronin's Path</title>
     <style>
         html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
-        canvas { display: block; }
+        canvas { display: block; outline: none; }
+        #menu {
+            position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+            background: radial-gradient(ellipse at center, #2a1a16 0%, #0b0807 75%);
+            font-family: Georgia, 'Times New Roman', serif; color: #eadfcf;
+        }
+        #menu[hidden], #menu .panel[hidden] { display: none; }
+        #menu .panel { display: flex; flex-direction: column; align-items: center; gap: 14px; width: min(460px, 90vw); text-align: center; }
+        #menu h1 { margin: 0; font-size: 58px; color: #e03c32; letter-spacing: 2px; text-shadow: 3px 3px 0 #000; }
+        #menu h2 { margin: 0 0 6px; font-size: 32px; color: #e03c32; }
+        #menu .kanji { font-size: 30px; color: #c9b48f; margin-bottom: 18px; font-family: 'Yu Mincho', 'MS Mincho', 'Noto Serif JP', serif; }
+        #menu p { margin: 0; color: #c9bba5; font-size: 15px; line-height: 1.45; }
+        #menu button {
+            width: 100%; padding: 13px 18px; font: bold 19px Georgia, serif; color: #f4e9d8; cursor: pointer;
+            background: linear-gradient(#5a1f1b, #3a1412); border: 1px solid #a7533f; border-radius: 4px;
+        }
+        #menu button:hover:not(:disabled) { background: linear-gradient(#7a2922, #4d1915); border-color: #e0a15f; }
+        #menu button:disabled { opacity: 0.45; cursor: default; }
+        #menu button.back { background: transparent; border-color: #5d4a3c; font-size: 16px; width: auto; padding: 8px 26px; }
+        #menu input {
+            width: 100%; box-sizing: border-box; padding: 11px; font: 17px monospace; text-align: center; color: #f4e9d8;
+            background: #1a1210; border: 1px solid #6b5443; border-radius: 4px;
+        }
+        #menu .code { font: bold 44px monospace; letter-spacing: 6px; color: #ffd98c; }
+        #menu .status { min-height: 42px; }
+        #menu .status.bad { color: #ff8a70; }
+        #menu .note { font-size: 13px; color: #8f806e; }
     </style>
 </head>
 <body>
     <canvas id="game" tabindex="0"></canvas>
+    <div id="menu">
+        <div class="panel" id="menu-main" hidden>
+            <h1>RONIN'S PATH</h1>
+            <div class="kanji">浪人の道</div>
+            <button id="btn-journey">Begin Journey</button>
+            <button id="btn-host">Host Online Duel</button>
+            <button id="btn-join">Join Online Duel</button>
+            <p class="note">Duels are 1v1, best of three. Both swordsmen fight with identical stats and techniques - only skill decides.</p>
+        </div>
+        <div class="panel" id="menu-host" hidden>
+            <h2>Host a Duel</h2>
+            <p>Room code</p>
+            <div class="code" id="host-code">------</div>
+            <input id="host-link" readonly placeholder="Invite link">
+            <button id="btn-copy" disabled>Copy Invite Link</button>
+            <p class="status" id="host-status"></p>
+            <button class="back">Back</button>
+        </div>
+        <div class="panel" id="menu-join" hidden>
+            <h2>Join a Duel</h2>
+            <p>Enter the room code from your host, or open their invite link.</p>
+            <input id="join-code" maxlength="24" placeholder="ROOM CODE" autocomplete="off" spellcheck="false">
+            <button id="btn-join-go">Join</button>
+            <p class="status" id="join-status"></p>
+            <button class="back">Back</button>
+        </div>
+    </div>
     <script src="js/util.js"></script>
     <script src="js/sfx.js"></script>
     <script src="js/effects.js"></script>
@@ -22,5 +75,9 @@
     <script src="js/player.js"></script>
     <script src="js/save.js"></script>
     <script src="js/game.js"></script>
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <script src="js/net.js"></script>
+    <script src="js/duel.js"></script>
+    <script src="js/menu.js"></script>
 </body>
 </html>
