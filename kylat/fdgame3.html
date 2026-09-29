@@ -1,0 +1,1115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hollow of Lyrica 3D</title>
+  <style>
+    :root {
+      --bg: #070d0d;
+      --panel: rgba(12, 16, 16, 0.9);
+      --panel-border: rgba(183, 205, 197, 0.35);
+      --text: #edf5f4;
+      --muted: #baceca;
+      --gold: #f3d98a;
+      --green: #8ee9ae;
+      --red: #ff817a;
+      --blue: #9ddfff;
+      --shadow: rgba(0, 0, 0, 0.42);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    body {
+      margin: 0;
+      background: radial-gradient(circle at top, #1c2f38 0%, #091516 25%, #020606 100%);
+      color: var(--text);
+      font-family: "Segoe UI", Tahoma, sans-serif;
+    }
+
+    #game-shell {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      background: linear-gradient(180deg, rgba(8, 12, 12, 0.7), rgba(6, 8, 8, 0.92));
+      overflow: hidden;
+    }
+
+    #topbar {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 18px 24px 0;
+      z-index: 10;
+      pointer-events: none;
+      flex-wrap: wrap;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(1.15rem, 1.8vw, 2rem);
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--gold);
+      text-shadow: 0 0 18px rgba(243, 217, 138, 0.35);
+    }
+
+    .stats {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      pointer-events: auto;
+    }
+
+    .chip {
+      background: rgba(9, 16, 18, 0.55);
+      border: 1px solid rgba(243, 217, 138, 0.3);
+      border-radius: 999px;
+      padding: 7px 12px;
+      color: var(--text);
+      font-size: 0.86rem;
+      white-space: nowrap;
+      backdrop-filter: blur(6px);
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+    }
+
+    .chip strong { color: var(--green); }
+
+    #viewport {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: radial-gradient(circle at center, #14353a 0%, #091617 35%, #030707 100%);
+      border: none;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      filter: saturate(1.25) contrast(1.08);
+    }
+
+    #controls {
+      position: absolute;
+      left: 50%;
+      bottom: 18px;
+      transform: translateX(-50%);
+      z-index: 10;
+      text-align: center;
+      color: rgba(238, 246, 245, 0.8);
+      font-size: 0.95rem;
+      letter-spacing: 0.02em;
+      text-shadow: 0 4px 18px rgba(0, 0, 0, 0.7);
+      padding: 8px 14px;
+      border-radius: 999px;
+      background: rgba(8, 12, 12, 0.32);
+      border: 1px solid rgba(184, 220, 210, 0.18);
+      backdrop-filter: blur(4px);
+    }
+
+    #crosshair {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 30px;
+      height: 30px;
+      transform: translate(-50%, -50%);
+      z-index: 11;
+      pointer-events: none;
+      opacity: 0.86;
+      transition: transform 120ms ease, opacity 120ms ease;
+    }
+
+    #crosshair::before,
+    #crosshair::after {
+      content: "";
+      position: absolute;
+      background: rgba(240, 255, 250, 0.95);
+      box-shadow: 0 0 5px rgba(0, 0, 0, 0.9);
+    }
+
+    #crosshair::before {
+      left: 14px;
+      top: 0;
+      width: 2px;
+      height: 30px;
+    }
+
+    #crosshair::after {
+      left: 0;
+      top: 14px;
+      width: 30px;
+      height: 2px;
+    }
+
+    #crosshair.aiming {
+      transform: translate(-50%, -50%) scale(0.72);
+      opacity: 1;
+    }
+
+    #crosshair.aiming::before,
+    #crosshair.aiming::after {
+      background: var(--gold);
+    }
+
+    #lobby-panel {
+      position: absolute;
+      top: 74px;
+      right: 20px;
+      z-index: 12;
+      width: min(290px, calc(100vw - 24px));
+      padding: 16px 16px 12px;
+      border-radius: 16px;
+      background: rgba(9, 16, 16, 0.76);
+      border: 1px solid rgba(179, 212, 205, 0.22);
+      box-shadow: 0 18px 35px rgba(0, 0, 0, 0.22);
+      backdrop-filter: blur(6px);
+    }
+
+    #lobby-panel h2 {
+      margin: 0 0 10px;
+      color: var(--gold);
+      font-size: 0.94rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+
+    .lobby-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .lobby-row input {
+      flex: 1;
+      min-width: 0;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(191, 223, 214, 0.2);
+      border-radius: 10px;
+      color: var(--text);
+      padding: 10px 12px;
+      font-size: 0.96rem;
+      outline: none;
+    }
+
+    .lobby-row button {
+      border: none;
+      border-radius: 10px;
+      padding: 10px 12px;
+      background: linear-gradient(135deg, #8ee9ae, #59cbb3);
+      color: #042823;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .ghost-btn {
+      background: rgba(255,255,255,0.05) !important;
+      border: 1px solid rgba(184, 220, 210, 0.2) !important;
+      color: var(--text) !important;
+    }
+
+    #room-status {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 0.82rem;
+      min-height: 18px;
+    }
+  </style>
+</head>
+<body>
+  <div id="game-shell">
+    <div id="topbar">
+      <h1>Hollow of Lyrica</h1>
+      <div class="stats">
+        <div class="chip">Health: <strong id="hp">100</strong></div>
+        <div class="chip">Posture: <strong id="posture">100</strong></div>
+        <div class="chip">Spirit: <strong id="stamina">100</strong></div>
+      </div>
+    </div>
+
+    <div id="lobby-panel">
+      <h2>Battle Royale</h2>
+      <div class="lobby-row">
+        <button id="create-room">Create Room</button>
+        <button id="copy-room" class="ghost-btn">Copy</button>
+      </div>
+      <div class="lobby-row">
+        <input id="room-input" maxlength="6" placeholder="Enter room code" />
+        <button id="join-room">Join</button>
+      </div>
+      <div id="room-status">No room yet. Start a lobby and invite friends.</div>
+    </div>
+
+    <div id="viewport"></div>
+    <div id="crosshair" aria-hidden="true"></div>
+    <div id="controls">Click the arena to capture the mouse. WASD move, mouse camera, RMB shoot, LMB aim, Shift sprint.</div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+  <script>
+    const viewport = document.getElementById('viewport');
+    const hpEl = document.getElementById('hp');
+    const postureEl = document.getElementById('posture');
+    const staminaEl = document.getElementById('stamina');
+    const roomInput = document.getElementById('room-input');
+    const createRoomBtn = document.getElementById('create-room');
+    const copyRoomBtn = document.getElementById('copy-room');
+    const joinRoomBtn = document.getElementById('join-room');
+    const roomStatusEl = document.getElementById('room-status');
+    const crosshairEl = document.getElementById('crosshair');
+    const keys = {};
+    const mouse = {
+      shooting: false,
+      aiming: false,
+      cameraYaw: 0,
+      cameraPitch: 0.18,
+      targetYaw: 0,
+      targetPitch: 0.18
+    };
+
+    const ROOM_KEY = 'hollow_of_lyrica_room';
+    const ROOM_CHANNEL = 'hollow_of_lyrica_channel';
+    const roomChannel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel(ROOM_CHANNEL) : null;
+
+    function showRoomStatus(message, tone = '#baceca') {
+      roomStatusEl.textContent = message;
+      roomStatusEl.style.color = tone;
+    }
+
+    function generateRoomCode() {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      let code = '';
+      for (let i = 0; i < 5; i++) {
+        code += chars[Math.floor(Math.random() * chars.length)];
+      }
+      return code;
+    }
+
+    function saveRoomState(roomCode, isHost = false) {
+      const payload = { roomCode, isHost, updatedAt: Date.now() };
+      localStorage.setItem(ROOM_KEY, JSON.stringify(payload));
+      if (roomChannel) {
+        roomChannel.postMessage({ type: 'room-state', ...payload });
+      }
+    }
+
+    function loadRoomState() {
+      try {
+        const raw = localStorage.getItem(ROOM_KEY);
+        if (!raw) return null;
+        return JSON.parse(raw);
+      } catch (error) {
+        return null;
+      }
+    }
+
+    function applyRoomState(roomState) {
+      if (!roomState || !roomState.roomCode) return;
+      state.roomCode = roomState.roomCode;
+      state.isHost = !!roomState.isHost;
+      roomInput.value = roomState.roomCode;
+      showRoomStatus(
+        state.isHost
+          ? `Room ${roomState.roomCode} is live. Invite friends to join.`
+          : `Joined room ${roomState.roomCode}. Survive the storm together.`,
+        state.isHost ? '#8ee9ae' : '#9ddfff'
+      );
+    }
+
+    function createRoom() {
+      const code = generateRoomCode();
+      state.roomCode = code;
+      state.isHost = true;
+      saveRoomState(code, true);
+      roomInput.value = code;
+      showRoomStatus(`Room ${code} created. Copy the code and invite a friend.`, '#8ee9ae');
+    }
+
+    function joinRoom() {
+      const code = (roomInput.value || '').trim().toUpperCase();
+      if (!code) {
+        showRoomStatus('Enter a valid room code to join a lobby.', '#ff817a');
+        return;
+      }
+
+      const saved = loadRoomState();
+      const roomExists = saved && saved.roomCode && saved.roomCode.toUpperCase() === code;
+
+      if (!roomExists) {
+        showRoomStatus(`Room ${code} is not active yet. Create one or ask the host to share it.`, '#ff817a');
+        return;
+      }
+
+      state.roomCode = code;
+      state.isHost = false;
+      saveRoomState(code, false);
+      showRoomStatus(`Joined room ${code}. Your squad will be synced in this match.`, '#9ddfff');
+    }
+
+    if (roomChannel) {
+      roomChannel.onmessage = (event) => {
+        const payload = event.data;
+        if (payload && payload.type === 'room-state') {
+          applyRoomState(payload);
+        }
+      };
+    }
+
+    createRoomBtn.addEventListener('click', createRoom);
+    joinRoomBtn.addEventListener('click', joinRoom);
+    copyRoomBtn.addEventListener('click', async () => {
+      const roomCode = (roomInput.value || state.roomCode || '').trim();
+      if (!roomCode) {
+        showRoomStatus('Create or join a room before copying the invite.', '#ff817a');
+        return;
+      }
+
+      try {
+        await navigator.clipboard.writeText(roomCode);
+        showRoomStatus(`Room ${roomCode} copied to the clipboard.`, '#f3d98a');
+      } catch (error) {
+        showRoomStatus(`Room ${roomCode} is ready to share manually.`, '#f3d98a');
+      }
+    });
+
+    roomInput.addEventListener('input', () => {
+      roomInput.value = (roomInput.value || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5);
+    });
+
+    window.addEventListener('storage', (event) => {
+      if (event.key === ROOM_KEY) {
+        applyRoomState(loadRoomState());
+      }
+    });
+
+    const state = {
+      running: true,
+      won: false,
+      wave: 0,
+      message: 'The shrine hums in the dark. Step into the void.',
+      roomCode: '',
+      isHost: false
+    };
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x071214);
+    scene.fog = new THREE.Fog(0x071214, 18, 82);
+
+    const camera = new THREE.PerspectiveCamera(62, 1, 0.1, 220);
+    camera.position.set(0, 4.2, 9.5);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(viewport.clientWidth, viewport.clientHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    viewport.appendChild(renderer.domElement);
+    renderer.domElement.style.cursor = 'crosshair';
+
+    function captureMouse() {
+      if (document.pointerLockElement !== renderer.domElement && renderer.domElement.requestPointerLock) {
+        renderer.domElement.requestPointerLock();
+      }
+    }
+
+    renderer.domElement.addEventListener('click', captureMouse);
+    renderer.domElement.addEventListener('contextmenu', (event) => event.preventDefault());
+    renderer.domElement.addEventListener('mousemove', (event) => {
+      if (document.pointerLockElement !== renderer.domElement) return;
+      mouse.targetYaw -= event.movementX * 0.0025;
+      mouse.targetPitch = clamp(mouse.targetPitch - event.movementY * 0.0018, -0.15, 0.72);
+    });
+    renderer.domElement.addEventListener('mousedown', (event) => {
+      captureMouse();
+      if (event.button === 0) mouse.aiming = true;
+      if (event.button === 2) {
+        mouse.shooting = true;
+        doShoot();
+      }
+    });
+    window.addEventListener('mouseup', (event) => {
+      if (event.button === 0) mouse.aiming = false;
+      if (event.button === 2) mouse.shooting = false;
+    });
+
+    const hemi = new THREE.HemisphereLight(0xcfe8ff, 0x091010, 1.25);
+    scene.add(hemi);
+
+    const moon = new THREE.DirectionalLight(0xdfeeff, 1.85);
+    moon.position.set(10, 12, 10);
+    moon.castShadow = true;
+    moon.shadow.mapSize.set(2048, 2048);
+    moon.shadow.camera.left = -30;
+    moon.shadow.camera.right = 30;
+    moon.shadow.camera.top = 30;
+    moon.shadow.camera.bottom = -30;
+    scene.add(moon);
+
+    const warm = new THREE.PointLight(0xf4c98c, 1.3, 30, 2);
+    warm.position.set(-5, 5, 5);
+    scene.add(warm);
+
+    const ambient = new THREE.AmbientLight(0x6aa3a3, 0.42);
+    scene.add(ambient);
+
+    const arena = new THREE.Mesh(
+      new THREE.CircleGeometry(24, 96),
+      new THREE.MeshStandardMaterial({ color: 0x101f22, roughness: 0.96, metalness: 0.12 })
+    );
+    arena.rotation.x = -Math.PI / 2;
+    arena.receiveShadow = true;
+    scene.add(arena);
+
+    const arenaRing = new THREE.Mesh(
+      new THREE.RingGeometry(12, 18, 96),
+      new THREE.MeshStandardMaterial({ color: 0x2f8a93, emissive: 0x1a3b43, emissiveIntensity: 0.8, side: THREE.DoubleSide })
+    );
+    arenaRing.rotation.x = -Math.PI / 2;
+    arenaRing.position.y = 0.06;
+    scene.add(arenaRing);
+
+    const centerGlow = new THREE.Mesh(
+      new THREE.CylinderGeometry(2.8, 2.8, 0.15, 48),
+      new THREE.MeshStandardMaterial({ color: 0x1f3e3f, emissive: 0x67d9d3, emissiveIntensity: 0.7 })
+    );
+    centerGlow.position.y = 0.08;
+    scene.add(centerGlow);
+
+    const pillars = [];
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2;
+      const pillar = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.6, 0.75, 6, 16),
+        new THREE.MeshStandardMaterial({ color: 0x21393b, roughness: 0.8, metalness: 0.2, emissive: 0x0d2123, emissiveIntensity: 0.2 })
+      );
+      pillar.position.set(Math.cos(a) * 20, 3, Math.sin(a) * 20);
+      pillar.castShadow = true;
+      pillar.receiveShadow = true;
+      scene.add(pillar);
+      pillars.push(pillar);
+    }
+
+    const starGeo = new THREE.BufferGeometry();
+    const starCount = 200;
+    const starPositions = new Float32Array(starCount * 3);
+    for (let i = 0; i < starCount; i++) {
+      starPositions[i * 3] = (Math.random() - 0.5) * 90;
+      starPositions[i * 3 + 1] = 10 + Math.random() * 30;
+      starPositions[i * 3 + 2] = (Math.random() - 0.5) * 90;
+    }
+    starGeo.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+    const stars = new THREE.Points(
+      starGeo,
+      new THREE.PointsMaterial({ color: 0xcfeaf1, size: 0.12, transparent: true, opacity: 0.85 })
+    );
+    scene.add(stars);
+
+    const floorGrid = new THREE.GridHelper(60, 24, 0x89d8d8, 0x1a3d3d);
+    floorGrid.position.y = 0.12;
+    floorGrid.material.opacity = 0.42;
+    floorGrid.material.transparent = true;
+    scene.add(floorGrid);
+
+    const ring2 = new THREE.Mesh(
+      new THREE.TorusGeometry(18, 0.08, 16, 120),
+      new THREE.MeshStandardMaterial({ color: 0x8ee9ae, emissive: 0x2e8f64, emissiveIntensity: 0.6 })
+    );
+    ring2.rotation.x = -Math.PI / 2;
+    ring2.position.y = 0.14;
+    scene.add(ring2);
+
+    const battleRoyale = {
+      radius: 18,
+      minRadius: 9,
+      timer: 0,
+      damageTick: 0
+    };
+
+    const player = {
+      mesh: new THREE.Group(),
+      hp: 100,
+      maxHp: 100,
+      posture: 100,
+      maxPosture: 100,
+      stamina: 100,
+      maxStamina: 100,
+      speed: 8,
+      facing: 0,
+      radius: 1.1,
+      attackCooldown: 0,
+      attackTimer: 0,
+      shootCooldown: 0,
+      dodgeTimer: 0,
+      invuln: 0,
+      blockTimer: 0,
+      swordPivot: null
+    };
+
+    function createHumanoidMaterial(color) {
+      return new THREE.MeshStandardMaterial({ color, roughness: 0.7, metalness: 0.18 });
+    }
+
+    function makeActor(color, sizeScale = 1) {
+      const group = new THREE.Group();
+
+      const bodyMaterial = new THREE.MeshStandardMaterial({
+        color,
+        roughness: 0.65,
+        metalness: 0.22,
+        emissive: color,
+        emissiveIntensity: 0.08
+      });
+
+      const body = new THREE.Mesh(
+        new THREE.BoxGeometry(0.9 * sizeScale, 1.8 * sizeScale, 0.5 * sizeScale),
+        bodyMaterial
+      );
+      body.position.y = 1.3 * sizeScale;
+      body.castShadow = true;
+      body.receiveShadow = true;
+      group.add(body);
+
+      const head = new THREE.Mesh(
+        new THREE.SphereGeometry(0.34 * sizeScale, 18, 18),
+        new THREE.MeshStandardMaterial({ color: 0xeaf6f4, roughness: 0.8, emissive: 0xbfefff, emissiveIntensity: 0.08 })
+      );
+      head.position.y = 2.45 * sizeScale;
+      head.castShadow = true;
+      group.add(head);
+
+      const swordPivot = new THREE.Group();
+      swordPivot.position.set(0.55 * sizeScale, 1.5 * sizeScale, 0);
+      const sword = new THREE.Mesh(
+        new THREE.BoxGeometry(0.12 * sizeScale, 1.8 * sizeScale, 0.10 * sizeScale),
+        new THREE.MeshStandardMaterial({ color: 0xf3d98a, emissive: 0x4a3b10, emissiveIntensity: 0.35, roughness: 0.3, metalness: 0.75 })
+      );
+      sword.position.y = 0.7 * sizeScale;
+      sword.rotation.z = 0.4;
+      sword.castShadow = true;
+      swordPivot.add(sword);
+      group.add(swordPivot);
+
+      const gunPivot = new THREE.Group();
+      gunPivot.position.set(0.58 * sizeScale, 1.55 * sizeScale, -0.14 * sizeScale);
+
+      const gunMaterial = new THREE.MeshStandardMaterial({
+        color: 0x1b2527,
+        roughness: 0.36,
+        metalness: 0.76
+      });
+      const gunAccent = new THREE.MeshStandardMaterial({
+        color: 0x8ee9ae,
+        emissive: 0x245e4d,
+        emissiveIntensity: 0.42,
+        roughness: 0.3,
+        metalness: 0.65
+      });
+
+      const receiver = new THREE.Mesh(
+        new THREE.BoxGeometry(0.28 * sizeScale, 0.3 * sizeScale, 1.05 * sizeScale),
+        gunMaterial
+      );
+      receiver.position.z = -0.34 * sizeScale;
+      receiver.castShadow = true;
+      gunPivot.add(receiver);
+
+      const barrel = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.055 * sizeScale, 0.07 * sizeScale, 0.95 * sizeScale, 12),
+        gunMaterial
+      );
+      barrel.rotation.x = Math.PI / 2;
+      barrel.position.set(0, 0.03 * sizeScale, -1.22 * sizeScale);
+      barrel.castShadow = true;
+      gunPivot.add(barrel);
+
+      const muzzle = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.1 * sizeScale, 0.1 * sizeScale, 0.18 * sizeScale, 12),
+        gunAccent
+      );
+      muzzle.rotation.x = Math.PI / 2;
+      muzzle.position.set(0, 0.03 * sizeScale, -1.7 * sizeScale);
+      muzzle.castShadow = true;
+      gunPivot.add(muzzle);
+
+      const stock = new THREE.Mesh(
+        new THREE.BoxGeometry(0.23 * sizeScale, 0.25 * sizeScale, 0.55 * sizeScale),
+        gunMaterial
+      );
+      stock.position.set(0, -0.02 * sizeScale, 0.38 * sizeScale);
+      stock.rotation.x = -0.12;
+      stock.castShadow = true;
+      gunPivot.add(stock);
+
+      const sight = new THREE.Mesh(
+        new THREE.BoxGeometry(0.06 * sizeScale, 0.13 * sizeScale, 0.22 * sizeScale),
+        gunAccent
+      );
+      sight.position.set(0, 0.2 * sizeScale, -0.72 * sizeScale);
+      sight.castShadow = true;
+      gunPivot.add(sight);
+
+      group.add(gunPivot);
+      group.userData.swordPivot = swordPivot;
+      group.userData.gunPivot = gunPivot;
+      return { group, swordPivot, gunPivot };
+    }
+
+    function buildPlayer() {
+      const actor = makeActor(0x8ee9ae, 1.0);
+      player.mesh = actor.group;
+      player.swordPivot = actor.swordPivot;
+      player.gunPivot = actor.gunPivot;
+      player.mesh.position.set(0, 0, 0);
+      scene.add(player.mesh);
+    }
+
+    function setHud() {
+      hpEl.textContent = Math.max(0, Math.ceil(player.hp));
+      postureEl.textContent = Math.max(0, Math.ceil(player.posture));
+      staminaEl.textContent = Math.max(0, Math.ceil(player.stamina));
+    }
+
+    let enemies = [];
+    let boss = null;
+
+    function rand(min, max) {
+      return Math.random() * (max - min) + min;
+    }
+
+    function clamp(value, min, max) {
+      return Math.min(Math.max(value, min), max);
+    }
+
+    function spawnEnemy(type = 'raider') {
+      const actor = makeActor(type === 'boss' ? 0xff817a : 0x9bb1ae, type === 'boss' ? 1.55 : 1);
+      const enemy = {
+        type,
+        mesh: actor.group,
+        swordPivot: actor.swordPivot,
+        hp: type === 'boss' ? 180 : 35,
+        maxHp: type === 'boss' ? 180 : 35,
+        posture: type === 'boss' ? 180 : 35,
+        maxPosture: type === 'boss' ? 180 : 35,
+        damage: type === 'boss' ? 16 : 10,
+        speed: type === 'boss' ? 3.2 : rand(1.8, 3.2),
+        attackCooldown: rand(1.1, 2.0),
+        attackWindup: 0,
+        radius: type === 'boss' ? 1.7 : 1.1,
+        stunned: 0
+      };
+
+      let x = rand(-12, 12);
+      let z = rand(22, 60);
+      if (type === 'boss') {
+        x = rand(-7, 7);
+        z = 44;
+      }
+
+      enemy.mesh.position.set(x, 0, z);
+      scene.add(enemy.mesh);
+      return enemy;
+    }
+
+    function clearEnemies() {
+      for (const enemy of enemies) {
+        scene.remove(enemy.mesh);
+      }
+      enemies = [];
+      if (boss) {
+        scene.remove(boss.mesh);
+        boss = null;
+      }
+    }
+
+    function resetGame() {
+      state.running = true;
+      state.won = false;
+      state.wave = 0;
+      state.message = 'The shrine hums in the dark. Step into the void.';
+
+      player.hp = 100;
+      player.posture = 100;
+      player.stamina = 100;
+      player.facing = 0;
+      player.attackCooldown = 0;
+      player.attackTimer = 0;
+      player.shootCooldown = 0;
+      player.dodgeTimer = 0;
+      player.invuln = 0;
+      player.blockTimer = 0;
+      player.mesh.position.set(0, 0, 0);
+      player.mesh.rotation.y = 0;
+      player.swordPivot.rotation.z = 0.3;
+      mouse.cameraYaw = 0;
+      mouse.cameraPitch = 0.18;
+      mouse.targetYaw = 0;
+      mouse.targetPitch = 0.18;
+      player.gunPivot.rotation.x = 0;
+
+      clearEnemies();
+      for (let i = 0; i < 4; i++) {
+        enemies.push(spawnEnemy());
+      }
+      setHud();
+    }
+
+    function doAttack() {
+      if (!state.running) return;
+      if (player.attackCooldown > 0 || player.stamina < 18) return;
+      player.attackCooldown = 0.48;
+      player.attackTimer = 0.16;
+      player.stamina = Math.max(0, player.stamina - 18);
+      state.message = 'The blade answers your breath.';
+    }
+
+    function doShoot() {
+      if (!state.running || player.shootCooldown > 0) return;
+      player.shootCooldown = mouse.aiming ? 0.16 : 0.24;
+      const directionX = Math.sin(mouse.cameraYaw);
+      const directionZ = Math.cos(mouse.cameraYaw);
+      const active = boss ? [...enemies, boss] : enemies;
+      let target = null;
+      let closestDistance = Infinity;
+
+      for (const enemy of active) {
+        if (!enemy || enemy.hp <= 0) continue;
+        const dx = enemy.mesh.position.x - player.mesh.position.x;
+        const dz = enemy.mesh.position.z - player.mesh.position.z;
+        const distance = Math.hypot(dx, dz);
+        const alignment = (dx * directionX + dz * directionZ) / (distance || 1);
+        const aimTolerance = mouse.aiming ? 0.985 : 0.92;
+        if (alignment >= aimTolerance && distance < closestDistance && distance < 34) {
+          target = enemy;
+          closestDistance = distance;
+        }
+      }
+
+      player.facing = mouse.cameraYaw;
+      player.mesh.rotation.y = -player.facing;
+      if (target) {
+        target.hp -= mouse.aiming ? 24 : 18;
+        target.posture -= mouse.aiming ? 18 : 12;
+        state.message = mouse.aiming ? 'Aimed shot lands.' : 'Shot fired.';
+        if (target.posture <= 0) {
+          target.stunned = 0.7;
+          target.posture = 0;
+        }
+        if (target.hp <= 0) {
+          if (target === boss) {
+            state.running = false;
+            state.won = true;
+            state.message = 'The final guardian collapses.';
+          } else {
+            state.wave += 1;
+            scene.remove(target.mesh);
+            enemies = enemies.filter((enemy) => enemy !== target);
+          }
+        }
+      } else {
+        state.message = 'The shot cuts through empty air.';
+      }
+    }
+
+    function doParry() {
+      if (!state.running) return;
+      if (player.stamina < 18) return;
+      player.blockTimer = 0.22;
+      player.stamina = Math.max(0, player.stamina - 18);
+      state.message = 'A clean parry. The strike is turned.';
+    }
+
+    function doDodge() {
+      if (!state.running) return;
+      if (player.stamina < 24 || player.dodgeTimer > 0) return;
+      player.dodgeTimer = 0.32;
+      player.invuln = 0.55;
+      player.stamina = Math.max(0, player.stamina - 24);
+      state.message = 'You slide through the attack.';
+    }
+
+    function dealDamageToPlayer(enemy, damage) {
+      if (player.blockTimer > 0) {
+        const blocked = damage * 0.35;
+        player.posture = Math.max(0, player.posture - blocked * 1.15);
+        player.stamina = Math.min(player.maxStamina, player.stamina + 10);
+        state.message = 'Blocked. The blow is softened.';
+        if (player.posture <= 0) {
+          player.hp -= 10;
+          player.posture = 35;
+          state.message = 'Your stance cracks. Recover.';
+        }
+        return;
+      }
+
+      player.hp -= damage;
+      player.posture -= damage * 0.8;
+      player.invuln = 0.45;
+      state.message = 'A deep hit lands. Endure.';
+      if (player.posture <= 0) {
+        player.posture = 25;
+        player.hp -= 5;
+      }
+      if (player.hp <= 0) {
+        state.running = false;
+        state.won = false;
+      }
+    }
+
+    function checkPlayerAttack() {
+      if (player.attackTimer <= 0) return;
+      const active = boss ? [...enemies, boss] : enemies;
+      for (const enemy of active) {
+        if (!enemy || enemy.hp <= 0) continue;
+        const dx = enemy.mesh.position.x - player.mesh.position.x;
+        const dz = enemy.mesh.position.z - player.mesh.position.z;
+        const dist = Math.hypot(dx, dz);
+        const angle = Math.atan2(dz, dx) - player.facing;
+        const angleNorm = Math.abs(Math.atan2(Math.sin(angle), Math.cos(angle)));
+
+        if (dist < 2.8 && angleNorm < 1.25) {
+          enemy.hp -= 28;
+          enemy.posture -= 25;
+          if (enemy.posture <= 0) {
+            enemy.stunned = 0.7;
+            enemy.posture = 0;
+            state.message = 'Posture broken. Press the advantage.';
+          }
+          if (enemy.hp <= 0) {
+            const removed = enemy;
+            if (removed === boss) {
+              state.running = false;
+              state.won = true;
+              state.message = 'The final guardian collapses.';
+            } else {
+              state.wave += 1;
+              scene.remove(removed.mesh);
+              enemies = enemies.filter((e) => e !== removed);
+              state.message = 'A rival falls. The void quiets.';
+            }
+          }
+        }
+      }
+      player.attackTimer = 0;
+    }
+
+    function spawnBossIfNeeded() {
+      if (boss || enemies.length > 0) return;
+      if (state.wave >= 3) {
+        boss = spawnEnemy('boss');
+        state.message = 'The final king of the Hollow rises.';
+      }
+    }
+
+    function updateEnemies(dt) {
+      const active = boss ? [...enemies, boss] : enemies;
+      for (const enemy of active) {
+        if (!enemy) continue;
+        if (enemy.hp <= 0) continue;
+
+        enemy.attackCooldown -= dt;
+
+        if (enemy.stunned > 0) {
+          enemy.stunned = Math.max(0, enemy.stunned - dt);
+          continue;
+        }
+
+        const dx = player.mesh.position.x - enemy.mesh.position.x;
+        const dz = player.mesh.position.z - enemy.mesh.position.z;
+        const dist = Math.hypot(dx, dz) || 1;
+
+        if (dist > 0.001) {
+          const step = enemy.speed * dt;
+          enemy.mesh.position.x += (dx / dist) * step;
+          enemy.mesh.position.z += (dz / dist) * step;
+        }
+
+        enemy.mesh.rotation.y = Math.atan2(dx, dz) + Math.PI;
+        enemy.swordPivot.rotation.z = Math.sin(performance.now() * 0.004) * 0.2;
+
+        if (dist < 2.5 && enemy.attackCooldown <= 0) {
+          enemy.attackCooldown = enemy.type === 'boss' ? 1.1 : 1.5;
+          enemy.attackWindup = 0.35;
+        }
+
+        if (enemy.attackWindup > 0) {
+          enemy.attackWindup -= dt;
+          if (enemy.attackWindup <= 0 && dist < 2.9) {
+            const playerVecX = player.mesh.position.x - enemy.mesh.position.x;
+            const playerVecZ = player.mesh.position.z - enemy.mesh.position.z;
+            const angleToPlayer = Math.atan2(playerVecZ, playerVecX);
+            const facingAngle = enemy.mesh.rotation.y;
+            const diff = Math.abs(Math.atan2(Math.sin(angleToPlayer - facingAngle), Math.cos(angleToPlayer - facingAngle)));
+            if (player.blockTimer > 0 && diff < 1.0) {
+              enemy.hp -= 24;
+              enemy.posture -= 24;
+              state.message = 'Perfect parry. The enemy recoils.';
+              if (enemy.posture <= 0) enemy.stunned = 0.8;
+            } else {
+              dealDamageToPlayer(enemy, enemy.damage);
+            }
+          }
+        }
+      }
+    }
+
+    function updateStorm(dt) {
+      battleRoyale.timer += dt;
+      battleRoyale.radius = Math.max(
+        battleRoyale.minRadius,
+        18 - battleRoyale.timer * 0.32
+      );
+      ring2.scale.setScalar(battleRoyale.radius / 18);
+
+      const distanceFromCenter = Math.hypot(player.mesh.position.x, player.mesh.position.z);
+      if (distanceFromCenter > battleRoyale.radius) {
+        battleRoyale.damageTick += dt;
+        if (battleRoyale.damageTick >= 0.6) {
+          player.hp -= 7;
+          player.posture -= 5;
+          battleRoyale.damageTick = 0;
+          state.message = 'The storm closes in. Move back inside the glow.';
+        }
+      } else {
+        battleRoyale.damageTick = 0;
+      }
+    }
+
+    function update(dt) {
+      if (!state.running) return;
+
+      player.attackCooldown = Math.max(0, player.attackCooldown - dt);
+      player.attackTimer = Math.max(0, player.attackTimer - dt);
+      player.shootCooldown = Math.max(0, player.shootCooldown - dt);
+      player.dodgeTimer = Math.max(0, player.dodgeTimer - dt);
+      player.blockTimer = Math.max(0, player.blockTimer - dt);
+      player.invuln = Math.max(0, player.invuln - dt);
+      player.stamina = Math.min(player.maxStamina, player.stamina + 18 * dt);
+
+      let strafeInput = 0;
+      let forwardInput = 0;
+      if (keys['ArrowLeft'] || keys['a']) strafeInput -= 1;
+      if (keys['ArrowRight'] || keys['d']) strafeInput += 1;
+      if (keys['ArrowUp'] || keys['w']) forwardInput += 1;
+      if (keys['ArrowDown'] || keys['s']) forwardInput -= 1;
+
+      const cameraSmoothing = 1 - Math.exp(-dt * 14);
+      mouse.cameraYaw += (mouse.targetYaw - mouse.cameraYaw) * cameraSmoothing;
+      mouse.cameraPitch += (mouse.targetPitch - mouse.cameraPitch) * cameraSmoothing;
+
+      if (strafeInput || forwardInput) {
+        const length = Math.hypot(strafeInput, forwardInput) || 1;
+        strafeInput /= length;
+        forwardInput /= length;
+        const forwardX = Math.sin(mouse.cameraYaw);
+        const forwardZ = Math.cos(mouse.cameraYaw);
+        const rightX = Math.cos(mouse.cameraYaw);
+        const rightZ = -Math.sin(mouse.cameraYaw);
+        const worldMoveX = rightX * strafeInput + forwardX * forwardInput;
+        const worldMoveZ = rightZ * strafeInput + forwardZ * forwardInput;
+        const speedMult = player.dodgeTimer > 0 ? 2.15 : keys['Shift'] ? 1.65 : 1;
+        player.mesh.position.x += worldMoveX * player.speed * speedMult * dt;
+        player.mesh.position.z += worldMoveZ * player.speed * speedMult * dt;
+        player.mesh.position.x = clamp(player.mesh.position.x, -15, 15);
+        player.mesh.position.z = clamp(player.mesh.position.z, 0, 56);
+        if (!mouse.aiming) {
+          player.facing = Math.atan2(worldMoveX, worldMoveZ);
+        } else {
+          player.facing = mouse.cameraYaw;
+        }
+        player.mesh.rotation.y = -player.facing;
+      }
+
+      if (player.attackTimer > 0) checkPlayerAttack();
+      if (mouse.shooting) doShoot();
+      updateStorm(dt);
+      updateEnemies(dt);
+      spawnBossIfNeeded();
+      setHud();
+
+      const behindDistance = mouse.aiming ? 5.2 : 7.5;
+      const cameraOffsetX = Math.sin(mouse.cameraYaw) * -behindDistance;
+      const cameraOffsetZ = Math.cos(mouse.cameraYaw) * -behindDistance;
+      const desiredCameraX = player.mesh.position.x + cameraOffsetX;
+      const desiredCameraY = 3.2 + mouse.cameraPitch * 4.2;
+      const desiredCameraZ = player.mesh.position.z + cameraOffsetZ;
+
+      camera.position.x += (desiredCameraX - camera.position.x) * 0.11;
+      camera.position.y += (desiredCameraY - camera.position.y) * 0.11;
+      camera.position.z += (desiredCameraZ - camera.position.z) * 0.11;
+
+      const lookDistance = mouse.aiming ? 18 : 4.5;
+      const lookX = player.mesh.position.x + Math.sin(mouse.cameraYaw) * lookDistance;
+      const lookY = 1.8 + mouse.cameraPitch * 2.5;
+      const lookZ = player.mesh.position.z + Math.cos(mouse.cameraYaw) * lookDistance;
+      camera.lookAt(lookX, lookY, lookZ);
+      camera.fov += ((mouse.aiming ? 46 : 62) - camera.fov) * 0.15;
+      camera.updateProjectionMatrix();
+      crosshairEl.classList.toggle('aiming', mouse.aiming);
+
+      const t = performance.now() * 0.00065;
+      stars.rotation.y = t * 0.35;
+      ring2.rotation.z += 0.008;
+      arenaRing.rotation.z += 0.004;
+      centerGlow.material.emissiveIntensity = 0.7 + Math.sin(t * 7) * 0.22;
+
+      for (let i = 0; i < pillars.length; i++) {
+        const p = pillars[i];
+        p.position.y = 3 + Math.sin(t * 2 + i) * 0.15;
+      }
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const delta = Math.min(0.033, clock.getDelta());
+      update(delta);
+      renderer.render(scene, camera);
+    }
+
+    window.addEventListener('keydown', (event) => {
+      const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+      keys[key] = true;
+
+      if (event.key === 'r' || event.key === 'R') {
+        resetGame();
+        return;
+      }
+
+      if (key === 'j') doAttack();
+      if (key === 'k') doParry();
+    });
+
+    window.addEventListener('keyup', (event) => {
+      const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+      keys[key] = false;
+    });
+
+    window.addEventListener('resize', () => {
+      const width = viewport.clientWidth;
+      const height = viewport.clientHeight;
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+      renderer.setSize(width, height);
+    });
+
+    const clock = new THREE.Clock();
+    applyRoomState(loadRoomState());
+    buildPlayer();
+    resetGame();
+    animate();
+  </script>
+</body>
+</html>
