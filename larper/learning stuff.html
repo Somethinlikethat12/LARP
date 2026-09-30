@@ -1,0 +1,74 @@
+<!doctype html>
+<html>
+<head>
+    <title>WASD Movement</title>
+    <style>
+        #game {
+            position: relative;
+            width: 500px;
+            height: 300px;
+            border: 2px solid black;
+            overflow: hidden;
+        }
+
+        #player {
+            position: absolute;
+            left: 100px;
+            top: 100px;
+            width: 30px;
+            height: 30px;
+            background-color: crimson;
+        }
+    </style>
+</head>
+<body>
+    <div id="game">
+        <div id="player"></div>
+    </div>
+
+    <script>
+        const player = document.querySelector("#player");
+
+        const keys = {
+            w: false,
+            a: false,
+            s: false,
+            d: false
+        };
+
+        let x = 100;
+        let y = 100;
+        const speed = 3;
+
+        window.addEventListener("keydown", function(event) {
+            const key = event.key.toLowerCase();
+
+            if (key in keys) {
+                keys[key] = true;
+            }
+        });
+
+        window.addEventListener("keyup", function(event) {
+            const key = event.key.toLowerCase();
+
+            if (key in keys) {
+                keys[key] = false;
+            }
+        });
+
+        function movePlayer() {
+            if (keys.w) y -= speed;
+            if (keys.s) y += speed;
+            if (keys.a) x -= speed;
+            if (keys.d) x += speed;
+
+            player.style.left = x + "px";
+            player.style.top = y + "px";
+
+            requestAnimationFrame(movePlayer);
+        }
+
+        movePlayer();
+    </script>
+</body>
+</html>
