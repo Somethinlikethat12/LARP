@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<title>Emberfall: The Ash Warden</title>
+	<link rel="preconnect" href="https://fonts.googleapis.com" />
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+	<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet" />
+	<link rel="stylesheet" href="stylesheet.css" />
+	<style>
+		.location-label,.interaction-prompt,.service-panel{position:absolute;z-index:3}
+		.location-label{top:112px;left:42px;color:#f4a15d;font:700 9px Manrope,sans-serif;letter-spacing:.22em;text-shadow:0 2px 8px #000}
+		.interaction-prompt{left:50%;bottom:22%;transform:translateX(-50%);padding:11px 16px;background:rgba(8,10,13,.86);border:1px solid rgba(244,161,93,.55);color:#eee9df;font:700 10px Manrope,sans-serif;letter-spacing:.12em;white-space:nowrap}
+		.interaction-prompt b{color:#f4a15d}
+		.service-panel{left:50%;top:50%;transform:translate(-50%,-50%);width:min(440px,calc(100vw - 32px));max-height:80vh;overflow:auto;padding:26px;background:rgba(13,15,16,.97);border:1px solid #806044;box-shadow:0 18px 70px #000;color:#eee9df}
+		.service-panel h2{margin:9px 0 12px;font:600 30px/1.05 Cinzel,serif;letter-spacing:0}
+		.service-panel p{color:#b7b3aa;font-size:12px;line-height:1.65}
+		.service-list{display:grid;gap:8px;margin:18px 0}
+		.service-item{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:12px 0;border-bottom:1px solid #38342e;font-size:12px}
+		.service-item small{display:block;margin-top:5px;color:#9f9b91}
+		.service-item button,.service-close{padding:10px 12px;font-size:9px;white-space:nowrap}
+		.service-close{background:#383b39}
+		@media(max-width:700px){.location-label{top:84px;left:18px}.interaction-prompt{bottom:25%}.service-panel{padding:20px}}
+	</style>
+</head>
+<body>
+	<main id="game-shell">
+		<canvas id="game-canvas" aria-label="Emberfall 3D game"></canvas>
+		<section id="hud" aria-live="polite">
+			<div class="topbar">
+				<div class="brand"><span class="brand-mark">✦</span><span>EMBERFALL</span><small>BLACKKEEP</small></div>
+				<div class="boss-frame" id="boss-panel"><div class="boss-name"><span>THE ASH WARDEN</span><span id="boss-state">WATCHING</span></div><div class="bar boss-bar"><span id="boss-health"></span></div></div>
+			</div>
+			<div class="location-label" id="location-label">CINDERWICK · MARKET SQUARE</div>
+			<div class="center-reticle" id="reticle"><span></span></div>
+			<div class="bottom-ui">
+				<div class="player-panel"><div class="player-heading"><span class="player-name">THE WAYFARER</span><span id="souls">0000</span></div><div class="bar health-bar"><span id="player-health"></span></div><div class="bar stamina-bar"><span id="player-stamina"></span></div><div class="status-row"><span>VITALITY</span><span>STAMINA</span></div></div>
+				<div class="controls"><span><b>WASD</b> MOVE</span><span><b>MOUSE</b> LOOK</span><span><b>LMB</b> STRIKE</span><span><b>SPACE</b> ROLL</span><span><b>E</b> INTERACT</span></div>
+			</div>
+		</section>
+		<section class="start-screen" id="start-screen"><div class="eyebrow">THE LAST LANTERN TOWN</div><h1>EMBERFALL</h1><p>Begin in Cinderwick. Find your weapon, accept the guild contract, and fight through Blackkeep to reach the Ash Warden.</p><button id="start-button">WAKE IN CINDERWICK <span>↗</span></button><div class="start-note">WASD move · Mouse look · E interact</div></section>
+		<section class="message-screen hidden" id="message-screen"><div class="eyebrow" id="message-kicker">THE GATE REMEMBERS</div><h2 id="message-title">FALLEN</h2><p id="message-copy">The ash settles. Your ember can be reclaimed.</p><button id="restart-button">TRY AGAIN <span>↻</span></button></section>
+		<div class="interaction-prompt hidden" id="interaction-prompt"></div>
+		<section class="service-panel hidden" id="service-panel" aria-live="polite"><div class="eyebrow" id="service-eyebrow">CINDERWICK</div><h2 id="service-title">IRON &amp; EMBER</h2><div id="service-content"></div><button class="service-close" id="service-close">CLOSE <span>×</span></button></section>
+		<div class="damage-flash" id="damage-flash"></div><div class="toast" id="toast">LOCKED ON</div>
+	</main>
+	<script type="module" src="game.js"></script>
+</body>
+</html>
