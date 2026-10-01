@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Organism Crawler</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+html,body{height:100%;margin:0;background:#0b0f14;color:#dfeee6;font:12px system-ui,sans-serif;overflow:hidden}
+canvas{display:block}#dead{position:fixed;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;background:rgba(40,0,0,0);z-index:5;transition:background 2s;text-align:center}#dead.s{background:rgba(40,0,0,.65)}#dead h1{font-size:52px;color:#e63946;letter-spacing:5px;margin:0 0 8px;opacity:0;transition:opacity 1.5s}#dead.s h1{opacity:1}#dbt{opacity:0;pointer-events:none;transition:opacity 1s;margin-top:14px}#dbt.s{opacity:1;pointer-events:auto}#dbt button{padding:10px 20px;font-size:15px}#sl{position:fixed;right:8px;top:calc(env(safe-area-inset-top,0px) + 8px);z-index:3;display:none;padding:6px 10px}#xh{position:fixed;left:50%;top:50%;width:14px;height:14px;margin:-7px;display:none;pointer-events:none;z-index:1}#xh:before,#xh:after{content:'';position:absolute;background:#fff;opacity:.8}#xh:before{left:6px;width:2px;top:0;bottom:0}#xh:after{top:6px;height:2px;left:0;right:0}
+#ui{position:fixed;left:0;top:env(safe-area-inset-top,0px);bottom:0;width:265px;overflow:auto;background:#101820ee;padding:8px;z-index:2}
+#hud{position:fixed;left:8px;top:calc(env(safe-area-inset-top,0px) + 8px);pointer-events:none;white-space:pre-line;text-shadow:0 1px 2px #000;z-index:1;font-size:13px}
+button{background:#1e3446;color:#dfeee6;border:1px solid #3a5a70;margin:2px;padding:4px 6px;cursor:pointer;border-radius:4px;font-size:12px}
+button.on{background:#2d7a55}button:disabled{opacity:.35}
+h3{margin:8px 0 3px;font-size:13px;color:#ffd166}.m{color:#9fd;white-space:pre-line}
+</style></head><body>
+<div id="dead"><h1>YOU DIED</h1><div id="dmsg" class="m"></div><div id="dbt"><button onclick="respawn()">Respawn</button><button onclick="endRun('You died.')">Back to menu</button></div></div><button id="sl" onclick="toggleLock()">Shift Lock (F): OFF</button><div id="xh"></div><div id="ui"></div><div id="hud"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ===== utils =====
+const V=(x=0,y=0,z=0)=>new THREE.Vector3(x,y,z),clamp=(v,a,b)=>Math.max(a,Math.min(b,v)),rnd=(a,b)=>a+Math.random()*(b-a);
+const lerpA=(a,b,t)=>a+((((b-a+Math.PI)%(2*Math.PI))+2*Math.PI)%(2*Math.PI)-Math.PI)*t;
+let uid=0;
+
+// ===== parts.js : data-driven part definitions (add new parts here) =====
+// prov = what it provides, req = what it requires, gun = projectile behaviour, sp = species (harvestable)
+const P={
+ head:{n:'Head',c:0xffd166,m:1.5,hp:24,sc:[.9,.9,.9],prov:{control:1,thrust:1,vital:1,support:1,melee:2}},
+ core:{n:'Core',c:0xef476f,m:2,hp:28,sc:[1,1,1],prov:{energy:1,vital:1,support:1}},
+ muscle:{n:'Muscle',c:0xd08050,m:1,hp:14,sc:[.85,.85,.85],blood:1,prov:{thrust:1,support:1,melee:1}},
+ leg:{n:'Leg',c:0xa0826d,m:.6,hp:9,limb:.22,blood:1,sc:[.35,.9,.35],prov:{thrust:2,melee:2},req:{support:1}},
+ eye:{n:'Eye',c:0x4cc9f0,m:.3,hp:5,blood:1,sc:[.5,.5,.5],prov:{aim:1},req:{energy:1}},
+ projectile:{n:'Pistol',c:0x80ed99,m:1,hp:8,blood:1,sc:[.45,.45,1],gun:{dmg:4,rate:.35,spd:30,rng:30,spr:.01,col:0x80ed99},req:{support:1,energy:1}},
+ ar:{n:'Assault Rifle',c:0x4d908e,m:1.5,hp:9,blood:1,sc:[.4,.4,1.3],gun:{dmg:3,rate:.2,spd:34,rng:45,spr:.03,fall:[25,.6],col:0x90e0ef},req:{support:1,energy:1}},
+ smg:{n:'SMG',c:0xf9c74f,m:1.1,hp:8,blood:1,sc:[.4,.4,.8],gun:{dmg:1.2,rate:.07,spd:50,rng:22,spr:.08,fall:[10,.4],size:.7,col:0xffe66d},req:{support:1,energy:1}},
+ shotgun:{n:'Shotgun',c:0xf3722c,m:1.8,hp:10,blood:1,sc:[.6,.6,.9],gun:{dmg:1.5,pel:8,rate:.9,spd:30,rng:14,spr:.16,fall:[5,.2],size:.7,col:0xffb347},req:{support:1,energy:1}},
+ sniper:{n:'Sniper',c:0x577590,m:2.2,hp:8,blood:1,sc:[.3,.3,1.7],gun:{dmg:20,rate:1.8,spd:90,rng:110,spr:0,size:1.5,col:0xffffff},req:{support:1,energy:1}},
+ wing:{n:'Wing',c:0xcdb4db,m:.7,hp:10,wing:1,sc:[1,1,1],blood:1,prov:{lift:1},req:{support:1}},
+ armor:{n:'Armor',c:0x9aa5b1,m:1.5,hp:45,sc:[.9,.9,.9],prov:{support:1}},
+ spiderleg:{n:'Spider Leg',c:0x5a3d2b,m:.5,hp:10,limb:.16,sc:[.3,1,.3],prov:{thrust:3,melee:3},req:{support:1},sp:'Spider'},
+ venom:{n:'Venom Sac',c:0xb5e61d,m:.8,hp:8,sc:[.5,.5,.8],gun:{dmg:2,rate:.25,spd:24,rng:30,spr:.07,fall:[12,.5],col:0xb5e61d},req:{support:1,energy:1},sp:'Spider'},
+ chitin:{n:'Chitin Plate',c:0x7a5c3a,m:1,hp:60,sc:[.95,.5,.95],prov:{support:1},sp:'Spider'},
+ regen:{n:'Regen Organ',c:0xf7a8c8,m:.8,hp:10,blood:1,sc:[.6,.6,.6],prov:{heal:1.5},req:{energy:1},sp:'Slime'},
+ ccannon:{n:'Crystal Cannon',c:0x7df9ff,m:2,hp:16,sc:[.6,.6,1.2],gun:{dmg:8,rate:1.3,spd:15,rng:40,spr:.02,col:0x7df9ff},req:{support:1,energy:1},sp:'Crystal'},
+ carmor:{n:'Crystal Armor',c:0xb388ff,m:2.2,hp:80,sc:[.95,.95,.95],prov:{support:1},sp:'Crystal'}
+};
+for(const k in P){P[k].prov=P[k].prov||{};P[k].req=P[k].req||{}}
+// circulatory organs live INSIDE blocks (up to 4 per block)
+const IN={heart:{n:'Heart',c:0xe63946,m:.6},lung:{n:'Lung',c:0xf4a6b8,m:.4},artery:{n:'Artery',c:0xd00000,m:.1},vein:{n:'Vein',c:0x3a6ea5,m:.1},vessel:{n:'Vessel (capillary)',c:0x9b5de5,m:.1}};
+const BASIC=['head','core','muscle','leg','wing','eye','projectile','ar','smg','shotgun','sniper','armor'];
+
+// ===== organism.js : organism = graph of parts + connections =====
+class Organism{
+ constructor(){this.id='organism_'+(++uid);this.parts=[];this.conn=[];this.headPartId=null;this.centromerePartId=null;this.team='p';this.kind='';this.sp=null;this.dna=0;this.spd=1;this.noCirc=false;this.fly=0}
+ add(type,x,y,z,rot=0){const d=P[type],p={id:'part_'+(++uid),type,position:{x,y,z},rotation:{x:0,y:rot,z:0},mass:d.m,health:d.hp,properties:d.prov,requirements:d.req,inner:[]};this.parts.push(p);if(type==='head'&&!this.headPartId)this.headPartId=p.id;return p}
+ link(p){for(const q of this.parts){if(q===p)continue;const n=Math.abs(q.position.x-p.position.x)+Math.abs(q.position.y-p.position.y)+Math.abs(q.position.z-p.position.z);if(n===1&&!this.has(p.id,q.id))this.conn.push([p.id,q.id])}}
+ has(a,b){return this.conn.some(c=>c.includes(a)&&c.includes(b))}
+ toggle(a,b){if(a===b)return;this.has(a,b)?this.conn=this.conn.filter(c=>!(c.includes(a)&&c.includes(b))):this.conn.push([a,b])}
+ root(){return this.parts.find(p=>p.id===this.headPartId)||this.parts.find(p=>P[p.type].prov.vital)||this.parts[0]}
+ ok(p){return !this.bad.get(p.id).length}
+ energyNear(id){const seen=new Set([id]);let f=[id];for(let d=0;d<=4;d++){const nf=[];for(const c of f){if(P[this.pm.get(c).type].prov.energy)return true;for(const n of this.A.get(c))if(!seen.has(n)){seen.add(n);nf.push(n)}}f=nf}return false}
+ refresh(){ // adjacency, requirement status, locomotion mode
+  if(!this.parts.some(p=>p.id===this.headPartId))this.headPartId=(this.parts.find(p=>p.type==='head')||{}).id||null;
+  this.pm=new Map(this.parts.map(p=>[p.id,p]));this.A=new Map(this.parts.map(p=>[p.id,[]]));
+  for(const [a,b] of this.conn)if(this.A.has(a)&&this.A.has(b)){this.A.get(a).push(b);this.A.get(b).push(a)}
+  for(const p of this.parts)if(P[p.type].wing){ // wing direction = away from the block it is attached to
+   const n=this.A.get(p.id).map(i=>this.pm.get(i)).sort((a,b)=>(P[b.type].prov.support?1:0)-(P[a.type].prov.support?1:0))[0];
+   let ax=n?p.position.x-n.position.x:0,az=n?p.position.z-n.position.z:0,pair=0;if(!ax&&!az){pair=1;ax=1}
+   const r=p.rotation.y,c=Math.cos(r),sn=Math.sin(r),x=ax*c+az*sn,z=-ax*sn+az*c,l=Math.hypot(x,z)||1;p.wo=[x/l,z/l,pair]}
+  this.circ();this.bad=new Map();
+  for(const p of this.parts){const u=[],r=p.requirements;
+   if(r.support&&!this.A.get(p.id).some(n=>P[this.pm.get(n).type].prov.support))u.push('support');
+   if(r.energy&&!this.energyNear(p.id))u.push('energy');if(P[p.type].blood&&this.perf&&!this.perf.get(p.id))u.push('blood');this.bad.set(p.id,u)}
+  // linear chain (worm-like) detection -> history follower; otherwise rigid/branching follower
+  this.chain=null;const r=this.root();
+  if(r&&this.parts.every(p=>this.A.get(p.id).length<=2)&&this.A.get(r.id).length<=1){
+   const ord=[r.id];let prev=null,cur=r.id;
+   for(;;){const nx=this.A.get(cur).find(n=>n!==prev);if(!nx||ord.includes(nx))break;ord.push(nx);prev=cur;cur=nx}
+   if(ord.length===this.parts.length)this.chain=ord}
+ }
+ // Circulation: heart -> artery/vessel network -> lung (oxygenation) -> tissue; vein/vessel network returns to heart.
+ circ(){if(this.noCirc){this.perf=null;this.o2=1;this.cs={h:0,l:0,d:0};return}
+  const pm=this.pm,A=this.A,inn=(p,t)=>p.inner&&p.inner.includes(t),hs=this.parts.filter(p=>inn(p,'heart'));
+  const flood=key=>{const st=new Set(hs.map(p=>p.id)),q=[...st];while(q.length){const c=q.shift();for(const n of A.get(c)){const b=pm.get(n);if(!st.has(n)&&(inn(b,key)||inn(b,'vessel')||inn(b,'lung')||inn(b,'heart'))){st.add(n);q.push(n)}}}return st};
+  const art=flood('artery'),ven=flood('vein'),lungs=this.parts.filter(p=>inn(p,'lung')&&art.has(p.id)&&ven.has(p.id)).length;
+  const near=(st,id)=>st.has(id)||A.get(id).some(n=>st.has(n));this.perf=new Map();let dem=0;
+  for(const p of this.parts){const ok=!!(hs.length&&lungs&&near(art,p.id)&&near(ven,p.id));this.perf.set(p.id,ok);if(ok&&P[p.type].blood)dem++}
+  this.o2=clamp(Math.min(lungs*8,hs.length*10)/Math.max(1,dem),.25,1);this.cs={h:hs.length,l:lungs,d:dem}}
+ components(){const seen=new Set(),out=[];for(const p of this.parts){if(seen.has(p.id))continue;const q=[p.id],comp=[];seen.add(p.id);
+  while(q.length){const c=q.shift();comp.push(c);for(const n of this.A.get(c))if(!seen.has(n)){seen.add(n);q.push(n)}}out.push(comp)}return out}
+ // Removes a part. If it was the centromere, disconnected components become NEW organisms (BFS, not array slicing).
+ // Otherwise orphaned components simply die (dropped).
+ removePart(id){
+  const wasC=id===this.centromerePartId;this.parts=this.parts.filter(p=>p.id!==id);this.conn=this.conn.filter(c=>!c.includes(id));
+  if(wasC)this.centromerePartId=null;this.refresh();
+  const comps=this.components(),res={frags:[],dropped:[]};if(comps.length<2)return res;
+  const main=comps.find(c=>c.includes(this.headPartId))||comps.reduce((a,b)=>b.length>a.length?b:a);
+  for(const c of comps){if(c===main)continue;const ps=this.parts.filter(p=>c.includes(p.id));
+   if(wasC){const f=new Organism();Object.assign(f,{team:this.team,kind:this.kind,sp:this.sp,dna:Math.floor(this.dna/2),spd:this.spd,noCirc:this.noCirc,fly:this.fly,parts:ps,conn:this.conn.filter(k=>c.includes(k[0]))});res.frags.push(f)}
+   else res.dropped.push(...ps)}
+  const moved=new Set([...res.frags.flatMap(f=>f.parts),...res.dropped].map(p=>p.id));
+  this.parts=this.parts.filter(p=>!moved.has(p.id));this.conn=this.conn.filter(k=>!moved.has(k[0]));this.refresh();res.frags.forEach(f=>f.refresh());return res}
+ setRT(pos,yaw,vel){ // runtime state
+  const r=this.root();this.yaw=yaw;this.vel=vel?vel.clone():V();this.pos=pos.clone();this.last=pos.clone();this.mv=false;this.pitch=0;this.grounded=true;this.stance=this.parts.some(p=>P[p.type].limb)?1.3:.6;this.parts.forEach(p=>{p.foot=null;p.st=0});
+  for(const p of this.parts)p.off=V(p.position.x-r.position.x,p.position.y-r.position.y,p.position.z-r.position.z);
+  if(!this.H)this.H=Array.from({length:256},()=>V());
+  const fx=Math.sin(yaw),fz=Math.cos(yaw);for(let j=0;j<256;j++)this.H[(256-j)%256].set(pos.x-fx*j*.1,pos.y,pos.z-fz*j*.1);this.hi=0}
+}
+
+// ===== physics.js : lightweight mass / CoM / speed =====
+const Phys={
+ mass:o=>o.parts.reduce((s,p)=>s+p.mass+p.inner.reduce((a,t)=>a+IN[t].m,0),0),
+ com(o,out,rt){out.set(0,0,0);let m=0;for(const p of o.parts){const q=rt?p.wpos:p.position;out.x+=q.x*p.mass;out.y+=q.y*p.mass;out.z+=q.z*p.mass;m+=p.mass}return out.multiplyScalar(1/(m||1))},
+ thrust(o){let t=0;for(const p of o.parts)if(o.ok(p))t+=P[p.type].prov.thrust||0;return t},
+ lift(o){let t=0;for(const p of o.parts)if(o.ok(p))t+=P[p.type].prov.lift||0;return t},
+ legPower(o){let t=0;for(const p of o.parts)if(o.ok(p)&&P[p.type].limb)t+=P[p.type].prov.thrust||0;return t},
+ flight(o){return o.fly?1:clamp(Phys.lift(o)*5/Math.max(1,Phys.mass(o)),0,1.2)},
+ speed(o){return clamp(6*Phys.thrust(o)/Math.max(1,Phys.mass(o)),.6,9)*o.o2}
+};
+
+// ===== enemies.js : different morphologies from the same part system =====
+const ENEMIES={
+ slime:{n:'Slime',dna:17,sp:'Slime',spd:.5,parts:[['core',0,0,0,-1],['muscle',1,0,0,0],['muscle',-1,0,0,0],['muscle',0,0,1,0],['regen',0,1,0,0]]},
+ spider:{n:'Spider',dna:42,sp:'Spider',spd:.55,cen:1,parts:[['head',0,0,0,-1],['core',0,0,-1,0],['spiderleg',1,0,0,0],['spiderleg',-1,0,0,0],['spiderleg',1,0,-1,1],['spiderleg',-1,0,-1,1],['venom',0,1,-1,1],['eye',0,1,0,0],['chitin',0,0,-2,1]]},
+ crystal:{n:'Crystal Beast',fly:1,dna:12,sp:'Crystal',spd:.35,parts:[['core',0,0,0,-1],['carmor',1,0,0,0],['carmor',-1,0,0,0],['ccannon',0,1,0,0],['eye',0,0,1,0]]},
+ grub:{n:'Grub',dna:20,sp:'Grub',spd:.6,cen:2,parts:[['head',0,0,0,-1],['muscle',0,0,-1,0],['muscle',0,0,-2,1],['core',0,0,-3,2],['muscle',0,0,-4,3]]}
+};
+function mkEnemy(key){const d=ENEMIES[key],o=new Organism();o.team='e';o.noCirc=true;o.fly=d.fly||0;o.kind=d.n;o.sp=d.sp;o.dna=d.dna;o.spd=d.spd;
+ const ps=d.parts.map(a=>o.add(a[0],a[1],a[2],a[3]));d.parts.forEach((a,i)=>{if(a[4]>=0)o.conn.push([ps[i].id,ps[a[4]].id])});
+ o.centromerePartId=d.cen!=null?ps[d.cen].id:null;return o}
+
+// ===== renderer.js =====
+const renderer=new THREE.WebGLRenderer({antialias:false});renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));document.body.appendChild(renderer.domElement);
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x0b0f14);
+const cam=new THREE.PerspectiveCamera(55,1,.1,200);
+scene.add(new THREE.AmbientLight(0xffffff,.7));const dl=new THREE.DirectionalLight(0xffffff,.8);dl.position.set(5,12,6);scene.add(dl);
+const BOX=new THREE.BoxGeometry(1,1,1),SPH=new THREE.SphereGeometry(.2,8,6);
+const mc={},mat=c=>mc[c]||(mc[c]=new THREE.MeshLambertMaterial({color:c})),bmc={},bmat=c=>bmc[c]||(bmc[c]=new THREE.MeshBasicMaterial({color:c}));
+const BAD=new THREE.MeshLambertMaterial({color:0x553333});
+const bgroup=new THREE.Group(),ggroup=new THREE.Group();scene.add(bgroup,ggroup);
+const UP=V(0,1,0),_pa=V(),_pc=V(),_pk=V(),_pf=V(),_pd=V(),_t=V(),_o={x:0,z:0};
+function mkMesh(p){const d=P[p.type];
+ if(d.wing){const g=new THREE.Group(),m=mat(d.c);for(let i=0;i<4;i++)g.add(new THREE.Mesh(BOX,m));g.add(new THREE.Mesh(SPH,m));return g} // 2 panels x 2 sides + shoulder joint
+ if(d.limb){const g=new THREE.Group(),m=mat(d.c);for(let i=0;i<2;i++){const q=new THREE.Mesh(BOX,m);q.scale.set(d.limb,1,d.limb);g.add(q)}g.add(new THREE.Mesh(SPH,m));return g} // thigh, shin, knee
+ const m=new THREE.Mesh(BOX,mat(d.c));m.scale.set(...d.sc);return m}
+function seg(q,a,b){_pd.subVectors(b,a);q.scale.y=_pd.length()||.01;q.position.lerpVectors(a,b,.5);q.quaternion.setFromUnitVectors(UP,_pd.normalize())}
+const _M=new THREE.Matrix4(),_X=V(),_Y=V(),_Z=V();
+function wingPose(g,root,ox,oz,ang,pair){ // ang>0 = wing raised; outer panel droops; starts at the block face
+ g.children[4].position.copy(root);g.children[4].scale.setScalar(.35);
+ for(let side=0;side<2;side++){const sg=side?-1:1,on=side===0||pair;let x=root.x+ox*sg*.4,y=root.y,z=root.z+oz*sg*.4;
+  for(let k=0;k<2;k++){const q=g.children[side*2+k];if(!on){q.scale.set(.001,.001,.001);q.position.copy(root);continue}
+   const a=k?ang*.3-.2:ang,ca=Math.cos(a),dx=ox*sg*ca,dy=Math.sin(a),dz=oz*sg*ca,len=k?.9:1;
+   _X.set(-oz,0,ox);_Y.set(dx,dy,dz);_Z.crossVectors(_X,_Y);_M.makeBasis(_X,_Y,_Z);q.quaternion.setFromRotationMatrix(_M);
+   q.scale.set(k?.55:.9,len,.07);q.position.set(x+dx*len/2,y+dy*len/2,z+dz*len/2);x+=dx*len;y+=dy*len;z+=dz*len}}}
+function poseLeg(g,hip,foot,out){ // analytic two-bone IK (thigh + shin), knee bends up/outward
+ const L=.95;_pa.subVectors(foot,hip);let d=_pa.length();if(d>2*L-.02){d=2*L-.02;_pa.setLength(d)}
+ _pc.set(out.x*.5,1,out.z*.5);if(d>0)_pc.addScaledVector(_pa,-_pc.dot(_pa)/(d*d));if(_pc.lengthSq()<1e-4)_pc.set(1,0,0);_pc.normalize();
+ _pk.copy(hip).addScaledVector(_pa,.5).addScaledVector(_pc,Math.sqrt(Math.max(0,L*L-d*d/4)));_pf.copy(hip).add(_pa);
+ seg(g.children[0],hip,_pk);seg(g.children[1],_pk,_pf);g.children[2].position.copy(_pk);g.children[2].scale.setScalar(1.2)}
+function resize(){renderer.setSize(innerWidth,innerHeight);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix()}addEventListener('resize',resize);resize();
+
+// ===== dungeon.js =====
+class Dungeon{
+ constructor(){this.S=34;this.H=12;this.pillars=[]}
+ gen(){
+  for(let i=ggroup.children.length-1;i>=0;i--)if(ggroup.children[i].userData.room)ggroup.remove(ggroup.children[i]);
+  const S=this.S,add=m=>{m.userData.room=1;ggroup.add(m)};
+  const fl=new THREE.Mesh(new THREE.PlaneGeometry(S,S),mat(0x1b2733));fl.rotation.x=-Math.PI/2;add(fl);
+  for(const [x,z,w,d] of [[0,-S/2,S,1],[0,S/2,S,1],[-S/2,0,1,S],[S/2,0,1,S]]){const m=new THREE.Mesh(BOX,mat(0x33475a));m.scale.set(w,this.H,d);m.position.set(x,this.H/2,z);add(m)}
+  this.pillars=[];const n=4+Math.floor(Math.random()*4);
+  for(let i=0;i<n;i++){const x=rnd(-12,12),z=rnd(-10,8),h=rnd(2,7),m=new THREE.Mesh(BOX,mat(0x3d5a73));m.scale.set(2.4,h,2.4);m.position.set(x,h/2,z);add(m);this.pillars.push({x,z,h})}}
+ floorAt(x,z){let f=0;for(const p of this.pillars)if(Math.abs(x-p.x)<1.2&&Math.abs(z-p.z)<1.2&&p.h>f)f=p.h;return f}
+ collide(pos,r,st){const b=this.S/2-r-.5;pos.x=clamp(pos.x,-b,b);pos.z=clamp(pos.z,-b,b);
+  for(const p of this.pillars){if(pos.y>p.h+st-.3)continue;const dx=pos.x-p.x,dz=pos.z-p.z,h=1.2+r;
+   if(Math.abs(dx)<h&&Math.abs(dz)<h){if(h-Math.abs(dx)<h-Math.abs(dz))pos.x=p.x+Math.sign(dx||1)*h;else pos.z=p.z+Math.sign(dz||1)*h}}
+  pos.y=clamp(pos.y,this.floorAt(pos.x,pos.z)+st,this.H-1)}
+ blocked(x,y,z){const b=this.S/2-.5;if(Math.abs(x)>b||Math.abs(z)>b||y<0||y>this.H)return true;for(const p of this.pillars)if(Math.abs(x-p.x)<1.3&&Math.abs(z-p.z)<1.3&&y<p.h)return true;return false}
+}
+
+// ===== game state / dna.js / harvesting.js =====
+const G={mode:'build',inv:{},dna:{Slime:0,Spider:0,Crystal:0,Grub:0},bp:new Set(BASIC),disc:new Set(),UNLOCK:25};
+G.avail=(t,o)=>G.bp.has(t)||(G.inv[t]||0)-o.parts.filter(p=>p.type===t).length>0;
+
+// ===== builder.js =====
+const tc={},tmat=c=>tc[c]||(tc[c]=new THREE.MeshLambertMaterial({color:c,transparent:true,opacity:.5,depthWrite:false})),BADT=new THREE.MeshLambertMaterial({color:0x993333,transparent:true,opacity:.7,depthWrite:false});
+function mkInner(t){const m=new THREE.Mesh(t==='heart'?SPH:BOX,mat(IN[t].c));
+ if(t==='heart'){m.scale.setScalar(1.5);m.position.set(.1,0,0)}
+ else if(t==='lung'){m.scale.set(.3,.45,.5);m.position.set(-.2,-.1,.05)}
+ else{const w=t==='vessel'?.07:.1;m.scale.set(w,w,.96);m.position.set(t==='artery'?-.32:t==='vein'?.32:0,t==='vessel'?-.32:.32,0)}
+ return m}
+class Builder{
+ constructor(){this.org=new Organism();this.tool='muscle';this.msg='';this.th=.8;this.ph=.7;this.r=11;this.tgt=V(0,0,-1);this.hov=null;this.cell=null;this.meshes=[];this.pulse=[];this.rc=new THREE.Raycaster();
+  const o=this.org,A=(t,x,y,z,i)=>{const p=o.add(t,x,y,z);if(i)p.inner=i};
+  A('head',0,0,0);A('core',0,0,-1,['heart','artery','vein']);A('muscle',0,0,-2,['lung','artery','vein']);A('projectile',1,0,-1);A('leg',1,0,-2);A('leg',-1,0,-2);
+  o.parts.forEach(p=>o.link(p));
+  this.ghost=new THREE.Mesh(BOX,new THREE.MeshBasicMaterial({color:0xffffff,wireframe:true}));this.ghost.scale.setScalar(1.04);this.ghost.visible=false;
+  this.gp=new THREE.Mesh(new THREE.PlaneGeometry(60,60),new THREE.MeshBasicMaterial({visible:false}));this.gp.rotation.x=-Math.PI/2;this.gp.position.y=-.5;
+  const gr=new THREE.GridHelper(40,40,0x335566,0x1e2b38);gr.position.y=-.5;bgroup.add(this.ghost,this.gp,gr);this.rebuild()}
+ say(m){this.msg=m;this.ui()}
+ part(){return this.org.parts.find(q=>q.id===this.hov)}
+ legPose(p,g){const o=this.org,n=o.A.get(p.id)[0],q=n&&o.pm.get(n);let ox=q?p.position.x-q.position.x:1,oz=q?p.position.z-q.position.z:0;
+  const a=p.rotation.y,c=Math.cos(a),s=Math.sin(a),x=ox*c+oz*s,z=-ox*s+oz*c,l=Math.hypot(x,z)||1;_o.x=x/l;_o.z=z/l;
+  const hip=new THREE.Vector3(p.position.x,p.position.y,p.position.z),foot=new THREE.Vector3(hip.x+_o.x*.9,Math.max(hip.y-1.5,-.5),hip.z+_o.z*.9);poseLeg(g,hip,foot,_o)}
+ rebuild(){const o=this.org;o.refresh();this.meshes.forEach(m=>bgroup.remove(m));this.meshes=[];this.pulse=[];
+  for(const p of o.parts){const d=P[p.type];let g;
+   if(d.limb){g=mkMesh(p);this.legPose(p,g)}else if(d.wing){g=mkMesh(p);wingPose(g,new THREE.Vector3(p.position.x,p.position.y,p.position.z),p.wo[0],p.wo[1],.35,p.wo[2])}
+   else{g=new THREE.Group();const m=mkMesh(p);m.material=o.bad.get(p.id).length?BADT:tmat(d.c);g.add(m);g.position.set(p.position.x,p.position.y,p.position.z);g.rotation.y=p.rotation.y;
+    for(const t of p.inner){const q=mkInner(t);g.add(q);if(t==='heart')this.pulse.push(q)}}
+   if((d.limb||d.wing)&&o.bad.get(p.id).length)g.children.forEach(c=>c.material=BAD);g.userData.id=p.id;bgroup.add(g);this.meshes.push(g)}
+  this.ui();this.tip()}
+ tip(){const p=this.part(),o=this.org;$('hud').textContent='Left-click: place · Shift+Left-click: delete · Right-drag: pan · Shift+Right-drag: rotate · Wheel: zoom · R: rotate block · C: centromere\n'+(p?`${P[p.type].n}${p.id===o.centromerePartId?' [centromere]':''} | inside: ${p.inner.map(t=>IN[t].n).join(', ')||'nothing'} | unmet: ${o.bad.get(p.id).join(', ')||'none'}${P[p.type].gun?` | ${P[p.type].gun.pel||1}x${P[p.type].gun.dmg} dmg, ${(1/P[p.type].gun.rate).toFixed(1)} shots/s, range ${P[p.type].gun.rng}`:''}`:'')}
+ hover(e){this.hov=null;this.cell=null;this.ghost.visible=false;const rc=this.rc;rc.setFromCamera(new THREE.Vector2(e.clientX/innerWidth*2-1,-(e.clientY/innerHeight)*2+1),cam);
+  const h=rc.intersectObjects([...this.meshes,this.gp],true)[0];if(!h)return this.tip();
+  let o=h.object;while(o&&o.userData.id===undefined)o=o.parent;
+  const p=o?this.org.parts.find(q=>q.id===o.userData.id):null,g=this.ghost,mode=e.shiftKey?0:IN[this.tool]?1:2;
+  if(p){this.hov=p.id;
+   if(mode<2){g.position.set(p.position.x,p.position.y,p.position.z);g.material.color.set(mode?0x00ffff:0xff4444);g.visible=true}
+   else{const n=h.face.normal.clone().transformDirection(h.object.matrixWorld),ax=Math.abs(n.x)>Math.abs(n.y)&&Math.abs(n.x)>Math.abs(n.z)?'x':Math.abs(n.y)>Math.abs(n.z)?'y':'z',c={x:p.position.x,y:p.position.y,z:p.position.z};
+    c[ax]+=Math.sign(n[ax]);this.cell=c;g.position.set(c.x,c.y,c.z);g.material.color.set(0xffffff);g.visible=true}}
+  else if(h.object===this.gp&&mode===2){this.cell={x:Math.round(h.point.x),y:0,z:Math.round(h.point.z)};g.position.set(this.cell.x,0,this.cell.z);g.material.color.set(0xffffff);g.visible=true}
+  this.tip()}
+ click(e){const o=this.org,p=this.part();
+  if(e.shiftKey){if(!p)return;if(IN[this.tool]&&p.inner.length)p.inner.pop();else this.removeBlock(p);return this.rebuild()}
+  if(IN[this.tool]){if(!p)return;if(p.inner.length>=4)return this.say('Block is full (4 organs max).');if(p.inner.includes(this.tool))return this.say('Block already has that.');p.inner.push(this.tool);return this.rebuild()}
+  const c=this.cell,t=this.tool;if(!c)return;
+  if(o.parts.some(q=>q.position.x===c.x&&q.position.y===c.y&&q.position.z===c.z))return;
+  if(!G.avail(t,o))return this.say('Part not available.');if(o.parts.length>=40)return this.say('Part limit reached.');
+  const np=o.add(t,c.x,c.y,c.z);o.link(np);
+  if(o.parts.length>1&&!o.conn.some(k=>k.includes(np.id))){o.parts.pop();return this.say('Place blocks touching the organism.')}
+  this.msg='';this.rebuild()}
+ removeBlock(p){const o=this.org;o.parts=o.parts.filter(q=>q!==p);o.conn=o.conn.filter(c=>!c.includes(p.id));if(o.centromerePartId===p.id)o.centromerePartId=null;o.refresh();
+  if(o.parts.length){const r=o.root(),comps=o.components(),keep=comps.find(c=>c.includes(r.id)),drop=new Set(comps.filter(c=>c!==keep).flat());o.parts=o.parts.filter(q=>!drop.has(q.id));o.conn=o.conn.filter(c=>!drop.has(c[0]))}}
+ rot(){const p=this.part();if(p){p.rotation.y+=Math.PI/2;this.rebuild()}}
+ centro(){const p=this.part();if(p){this.org.centromerePartId=this.org.centromerePartId===p.id?null:p.id;this.rebuild()}}
+ clear(){const o=this.org;o.parts=[];o.conn=[];o.headPartId=null;o.centromerePartId=null;this.rebuild()}
+ unlock(t){const sp=P[t].sp;if(G.dna[sp]>=G.UNLOCK){G.dna[sp]-=G.UNLOCK;G.bp.add(t);this.msg='Blueprint unlocked: '+P[t].n;this.ui()}}
+ ui(){const o=this.org,com=Phys.com(o,V(),false),cs=o.cs;
+  const types=Object.keys(P).filter(t=>G.bp.has(t)||G.inv[t]||G.disc.has(t));
+  const btn=(t,n,av)=>`<button class="${this.tool===t?'on':''}" onclick="B.tool='${t}';B.ui()">${n}${av===undefined?'':' ('+av+')'}</button>`;
+  const pal=types.map(t=>btn(t,P[t].n,G.bp.has(t)?'∞':(G.inv[t]||0)-o.parts.filter(p=>p.type===t).length)).join('');
+  const org=Object.keys(IN).map(t=>btn(t,IN[t].n)).join('');
+  const unl=[...G.disc].filter(t=>!G.bp.has(t)).map(t=>`<button onclick="B.unlock('${t}')" ${G.dna[P[t].sp]>=G.UNLOCK?'':'disabled'}>Unlock ${P[t].n}: ${G.UNLOCK} ${P[t].sp} DNA</button>`).join('');
+  const inv=Object.entries(G.inv).filter(e=>e[1]).map(e=>P[e[0]].n+' x'+e[1]).join(', ')||'none yet';
+  const funcN=o.parts.filter(p=>o.ok(p)).length,guns=o.parts.filter(p=>P[p.type].gun&&o.ok(p)).length;
+  $('ui').innerHTML=`<b style="font-size:15px">Organism Builder</b><div class="m">Pick a block, then left-click a face of the organism (or the grid) to place it. Pick an organ, then left-click a block to put the organ inside it. Shift+left-click deletes. Right-drag pans, Shift+right-drag rotates the view.</div>
+  <h3>Blocks</h3>${pal}<h3>Organs (go inside blocks)</h3>${org}
+  <div class="m">Heart pumps → arteries/vessels carry blood to a lung → oxygenated blood reaches blocks touching an artery AND a vein/vessel path back to the heart. Muscles, legs, eyes and guns need blood.</div>
+  <h3>Circulation</h3><div class="m">${cs.h} heart · ${cs.l} working lung · ${cs.d} blocks fed · O2 ${Math.round(o.o2*100)}%</div>
+  <h3>Structure</h3><div class="m">Blocks ${o.parts.length} | links ${o.conn.length} | working ${funcN}
+Mass ${Phys.mass(o).toFixed(1)} | CoM ${com.x.toFixed(1)},${com.y.toFixed(1)},${com.z.toFixed(1)}
+Speed ${Phys.speed(o).toFixed(1)} | active guns ${guns}
+Flight: ${Phys.flight(o)>.25?'yes (wings)':'no - needs wings'} | Jump: ${Phys.legPower(o)>0?'yes (legs)':'no - needs legs'}
+Locomotion: ${o.chain?'worm-style segment follower':'rigid branching follower'}
+Head: ${o.headPartId?'yes':'NO (needed to play)'} | Centromere: ${o.centromerePartId?'set (C)':'none'}</div>
+  <button onclick="B.clear()">Clear all</button>
+  <h3>Harvested parts</h3><div class="m">${inv}</div>${unl}
+  <h3>DNA</h3><div class="m">${Object.entries(G.dna).map(e=>e[0]+': '+e[1]).join('\n')}</div>
+  <div class="m" style="color:#ffd166">${this.msg||''}</div>
+  <button style="width:100%;padding:10px;background:#2d7a55;font-size:14px" onclick="startRun()">Enter Dungeon</button>`}
+}
+const $=id=>document.getElementById(id);
+
+// ===== combat.js + main game loop =====
+class Game{
+ constructor(){this.dg=new Dungeon();this.orgs=[];this.corpses=[];this.depth=1;this.t=0;this.msg='';this.msgT=0;this.hits=[];this.keys={};this.fire=false;this.lock=false;this.dead=false;this.deadT=0;this.cy=0;this.cp=.5;
+  this.mouse=V();this.aim=V();this.rc=new THREE.Raycaster();
+  this.projs=Array.from({length:160},()=>{const m=new THREE.Mesh(SPH,bmat(0xffffff));m.visible=false;ggroup.add(m);return{m,on:false,v:V(),team:'',dmg:0,dist:0,rng:40,fa:null}});
+  this.dir=V();this.camT=V();this.t2=V();this.t3=V();this.tv=V();this.t4=V()}
+ inst(bp,team,x,z,yaw){
+  const o=new Organism();Object.assign(o,{team,kind:bp.kind,sp:bp.sp,dna:bp.dna,spd:bp.spd||1,noCirc:bp.noCirc,fly:bp.fly,headPartId:bp.headPartId,centromerePartId:bp.centromerePartId});
+  o.conn=bp.conn.map(c=>[...c]);
+  o.parts=bp.parts.map(p=>({...p,position:{...p.position},rotation:{...p.rotation},inner:[...p.inner],maxhp:p.health,cd:0,flash:0,dead:false}));o.refresh();
+  const r=o.root(),st=o.parts.some(p=>P[p.type].limb)?1.3:.6;
+  for(const p of o.parts){p.wpos=V(x+p.position.x-r.position.x,st+p.position.y-r.position.y,z+p.position.z-r.position.z);p.mesh=mkMesh(p);ggroup.add(p.mesh)}
+  o.setRT(V(x,st,z),yaw);this.orgs.push(o);return o}
+ startRoom(){this.dg.gen();
+  this.orgs.filter(o=>o.team==='e').forEach(o=>o.parts.forEach(p=>ggroup.remove(p.mesh)));this.orgs=this.orgs.filter(o=>o.team==='p');
+  this.corpses.forEach(c=>ggroup.remove(c.mesh));this.corpses=[];this.projs.forEach(p=>{p.on=false;p.m.visible=false});
+  const pl=this.player;pl.setRT(V(0,pl.stance,this.dg.S/2-4),Math.PI);pl.parts.forEach(p=>p.wpos.set(pl.pos.x-p.off.x,pl.pos.y+p.off.y,pl.pos.z-p.off.z));
+  const n=Math.min(1+this.depth,5),keys=Object.keys(ENEMIES),k=1+.18*(this.depth-1);
+  for(let i=0;i<n;i++){const e=this.inst(mkEnemy(keys[Math.floor(Math.random()*keys.length)]),'e',rnd(-12,12),rnd(-14,-4),0);e.parts.forEach(p=>{p.health*=k;p.maxhp*=k})}
+  this.say('Room '+this.depth+': '+n+' organisms nearby.')}
+ say(m){this.msg=m;this.msgT=5}
+ enemies(){return this.orgs.filter(o=>o.team==='e').length}
+ damage(o,p,d){this.hits.push([o,p,d])}
+ applyHits(){for(const [o,p,d] of this.hits){if(p.dead)continue;p.health-=d;p.flash=.12;if(p.health<=0)this.kill(o,p)}this.hits.length=0}
+ kill(o,p){p.dead=true;ggroup.remove(p.mesh);const r=o.removePart(p.id); // circulation is recomputed inside removePart->refresh
+  r.dropped.forEach(q=>{q.dead=true;ggroup.remove(q.mesh)});
+  r.frags.forEach(f=>{f.setRT(f.root().wpos,o.yaw,o.vel);this.orgs.push(f);this.say('Centromere destroyed: organism split in two!');this.check(f)});
+  this.check(o)}
+ check(o){const alive=o.team==='p'?o.parts.some(p=>P[p.type].prov.control):o.parts.some(p=>P[p.type].prov.vital);if(alive)return;
+  if(o.team==='e'){const items=o.parts.filter(p=>P[p.type].sp).map(p=>p.type),cp=o.pos.clone();cp.y=this.dg.floorAt(cp.x,cp.z)+.2;
+   const m=new THREE.Mesh(SPH,mat(0x775544));m.scale.set(4,1,4);m.position.copy(cp);ggroup.add(m);this.corpses.push({pos:cp,items,sp:o.sp,dna:o.dna,mesh:m,kind:o.kind});
+   this.say(o.kind+' died. Land near it and press E to harvest.')}
+  o.parts.forEach(p=>{p.dead=true;ggroup.remove(p.mesh)});o.parts=[];this.orgs=this.orgs.filter(x=>x!==o);if(o.team==='p')this.die()}
+ die(){this.dead=true;this.deadT=0;this.fire=false;if(document.exitPointerLock)document.exitPointerLock();$('hud').textContent='';
+  $('dmsg').textContent='Your organism died on room '+this.depth+'.\nHarvested parts and DNA are kept.';$('dead').style.display='flex';$('dead').className='';$('dbt').className=''}
+ harvest(){let best=null,bd=14;for(const c of this.corpses){const d=c.pos.distanceToSquared(this.player.pos);if(d<bd){bd=d;best=c}}
+  if(!best)return;best.items.forEach(t=>{G.inv[t]=(G.inv[t]||0)+1;G.disc.add(t)});G.dna[best.sp]=(G.dna[best.sp]||0)+best.dna;
+  this.say('Harvested '+(best.items.map(t=>P[t].n).join(', ')||'nothing usable')+' + '+best.dna+' '+best.sp+' DNA');
+  ggroup.remove(best.mesh);this.corpses=this.corpses.filter(c=>c!==best)}
+ fireProj(x,y,z,dx,dy,dz,g,team){const p=this.projs.find(q=>!q.on);if(!p)return;p.on=true;p.team=team;p.dmg=g.dmg;p.dist=0;p.rng=g.rng||40;p.fa=g.fall||null;
+  p.v.set(dx*g.spd,dy*g.spd,dz*g.spd);p.m.material=bmat(g.col);p.m.scale.setScalar(g.size||1);p.m.position.set(x,y,z);p.m.visible=true}
+ // Crosshair aim: aim at the enemy part under the crosshair; otherwise at the floor/far point along the view ray (never underground)
+ aimPoint(){const rc=this.rc,ray=rc.ray;rc.setFromCamera(this.mouse,cam);let best=1e9,bp=null;
+  for(const e of this.orgs){if(e.team==='p')continue;for(const q of e.parts){this.t2.subVectors(q.wpos,ray.origin);const tca=this.t2.dot(ray.direction);if(tca<0)continue;if(this.t2.lengthSq()-tca*tca<.81&&tca<best){best=tca;bp=q}}}
+  if(bp)this.aim.copy(bp.wpos);else{let t=60;if(ray.direction.y<-1e-3)t=Math.min(t,-ray.origin.y/ray.direction.y);ray.at(Math.max(t,13),this.aim)}}
+ guns(o,aim,dm){const eye=o.parts.some(p=>P[p.type].prov.aim&&o.ok(p));
+  for(const p of o.parts){const g=P[p.type].gun;if(!g||p.cd>0||!o.ok(p))continue;
+   let dx=aim.x-p.wpos.x,dy=aim.y-p.wpos.y,dz=aim.z-p.wpos.z;const l=Math.hypot(dx,dy,dz)||1;dx/=l;dy/=l;dz/=l;
+   const a=p.rotation.y,c=Math.cos(a),s=Math.sin(a);let v=this.tv.set(dx*c+dz*s,dy,-dx*s+dz*c);
+   if(eye){let best=.97,f=false;for(const e of this.orgs){if(e.team===o.team)continue;for(const q of e.parts){this.t2.subVectors(q.wpos,p.wpos);const el=this.t2.length()||1,dot=this.t2.dot(v)/el;if(dot>best){best=dot;this.t3.copy(this.t2).divideScalar(el);f=true}}}if(f)v=this.t3}
+   const n=g.pel||1,sp=g.spr||0;
+   for(let i=0;i<n;i++){const w=this.t4.copy(v);if(sp){w.x+=(Math.random()-.5)*2*sp;w.y+=(Math.random()-.5)*2*sp;w.z+=(Math.random()-.5)*2*sp;w.normalize()}
+    this.fireProj(p.wpos.x,p.wpos.y,p.wpos.z,w.x,w.y,w.z,g,o.team)}
+   p.cd=g.rate*dm/o.o2}}
+ // full 3D locomotion: horizontal steering, vertical thrust (Space/Shift), gravity glide, pitch follows velocity
+ move(o,dt,dir,mul){const sp=Phys.speed(o)*mul*o.spd,wy=dir.y,e=Math.min(1,dt*5);dir.y=0;
+  if(dir.lengthSq()>.01)dir.normalize().multiplyScalar(sp);else dir.set(0,0,0);
+  o.vel.x+=(dir.x-o.vel.x)*e;o.vel.z+=(dir.z-o.vel.z)*e;
+  const fl=Phys.flight(o);
+  if(fl>.25){const ty=wy?wy*sp*.8*(wy>0?fl:1):0;o.vel.y+=(ty-o.vel.y)*Math.min(1,dt*(wy?5:2))} // winged: free flight / hover
+  else{o.vel.y=Math.max(-25,o.vel.y-(20+(wy<0?30:0))*dt); // gravity
+   if(wy>0&&o.grounded){const lp=Phys.legPower(o);if(lp>0)o.vel.y=clamp(6+lp*8/Math.max(1,Phys.mass(o)),6,14)}} // legs: jump
+  o.pos.addScaledVector(o.vel,dt);this.dg.collide(o.pos,.6,o.stance);
+  o.grounded=o.pos.y<=this.dg.floorAt(o.pos.x,o.pos.z)+o.stance+.05;if(o.grounded&&o.vel.y<0)o.vel.y=0;
+  const hv=Math.hypot(o.vel.x,o.vel.z);o.mv=hv>.5||Math.abs(o.vel.y)>.5;
+  if(o===this.player&&this.lock)o.yaw=lerpA(o.yaw,this.cy+Math.PI,Math.min(1,dt*12)); // shift lock: body faces camera, A/D strafe
+  else if(hv>.5)o.yaw=lerpA(o.yaw,Math.atan2(o.vel.x,o.vel.z),Math.min(1,dt*5));
+  o.pitch+=((o.grounded?0:clamp(Math.atan2(o.vel.y,hv+1)*.8,-.7,.7))-o.pitch)*Math.min(1,dt*4);
+  if(o.pos.distanceToSquared(o.last)>=.01){o.hi=(o.hi+1)%256;o.H[o.hi].copy(o.pos);o.last.copy(o.pos)}
+  this.place(o,dt)}
+ place(o,dt){const pm=o.pm;
+  if(o.chain){const ord=o.chain,SP=1.05;pm.get(ord[0]).wpos.copy(o.pos);let k=0,acc=0,target=SP,pv=o.pos;
+   for(let c=1;c<256&&k<ord.length-1;c++){const q=o.H[(o.hi-c+256)%256];acc+=pv.distanceTo(q);pv=q;while(acc>=target&&k<ord.length-1){k++;pm.get(ord[k]).wpos.copy(q);target+=SP}}
+   while(k<ord.length-1){k++;pm.get(ord[k]).wpos.copy(pv)}
+   for(let i=0;i<ord.length;i++){const p=pm.get(ord[i]);p.ang=i?Math.atan2(pm.get(ord[i-1]).wpos.x-p.wpos.x,pm.get(ord[i-1]).wpos.z-p.wpos.z):o.yaw}
+  }else{const c=Math.cos(o.yaw),s=Math.sin(o.yaw),cp=Math.cos(o.pitch),sp=Math.sin(o.pitch),k=Math.min(1,dt*10);
+   for(const p of o.parts){const y1=p.off.y*cp+p.off.z*sp,z1=p.off.z*cp-p.off.y*sp,tx=o.pos.x+p.off.x*c+z1*s,tz=o.pos.z-p.off.x*s+z1*c;
+    p.wpos.x+=(tx-p.wpos.x)*k;p.wpos.y+=(o.pos.y+y1-p.wpos.y)*k;p.wpos.z+=(tz-p.wpos.z)*k;p.ang=o.yaw+p.rotation.y}}
+  let li=0;const beat=o.cs.h?1+.06*Math.max(0,Math.sin(this.t*8)):1;
+  for(const p of o.parts){p.cd=Math.max(0,p.cd-dt);p.flash=Math.max(0,p.flash-dt);const d=P[p.type];
+   if(d.limb)this.leg(o,p,dt,li++);else if(d.wing)this.wing(o,p);
+   else{const f=(p.flash>0?1.3:1)*(d.blood?beat:1);p.mesh.position.copy(p.wpos);p.mesh.rotation.y=p.ang;p.mesh.rotation.z=d.prov.lift&&!o.grounded?Math.sin(this.t*14)*.5:0;p.mesh.scale.set(d.sc[0]*f,d.sc[1]*f,d.sc[2]*f)}
+   if(d.prov.heal&&o.ok(p))for(const q of o.parts)q.health=Math.min(q.maxhp,q.health+d.prov.heal*dt)}}
+ wing(o,p){const c=Math.cos(o.yaw),s=Math.sin(o.yaw),w=p.wo,a=o.grounded?.3:.25+Math.sin(this.t*14+p.off.z)*.7;wingPose(p.mesh,p.wpos,w[0]*c+w[1]*s,-w[0]*s+w[1]*c,a,w[2])}
+ // procedural walking leg: planted foot, steps when too far, dangles in the air
+ leg(o,p,dt,i){const hip=p.wpos,gy=this.dg.floorAt(hip.x,hip.z);let ox=hip.x-o.pos.x,oz=hip.z-o.pos.z,l=Math.hypot(ox,oz);
+  if(l<.2){ox=Math.cos(o.yaw);oz=-Math.sin(o.yaw);l=1}ox/=l;oz/=l;
+  const f=p.foot||(p.foot=V(hip.x+ox*.8,gy,hip.z+oz*.8)),t=_t.set(hip.x+ox*.9+o.vel.x*.25,o.grounded?gy:hip.y-1.3,hip.z+oz*.9+o.vel.z*.25);
+  if(!o.grounded){p.st=0;f.lerp(t,Math.min(1,dt*6))}
+  else if(p.st>0||f.distanceTo(t)>.8+.4*(i%2)){if(!(p.st>0)){p.from=(p.from||V()).copy(f);p.st=.001}p.st+=dt*(3.5+Math.hypot(o.vel.x,o.vel.z)*.4);
+   if(p.st>=1){p.st=0;f.copy(t)}else{f.lerpVectors(p.from,t,p.st);f.y+=Math.sin(p.st*Math.PI)*.45}}
+  _o.x=ox;_o.z=oz;poseLeg(p.mesh,hip,f,_o)}
+ ai(o,dt){const pp=this.player.pos,dx=pp.x-o.pos.x,dz=pp.z-o.pos.z,d=Math.hypot(dx,dz)||1,d3=this.dir.set(0,0,0);
+  const ranged=o.parts.some(p=>P[p.type].gun&&o.ok(p));
+  if(ranged){if(d>12)d3.set(dx,0,dz);else if(d<7)d3.set(-dx,0,-dz);else d3.set(-dz,0,dx).multiplyScalar(Math.sin(this.t*.7+o.pos.x))}
+  else if(d>1.5)d3.set(dx,0,dz);
+  if(o.fly)d3.y=clamp(pp.y-o.pos.y,-2,2)*.5;
+  this.move(o,dt,d3,1);if(ranged&&d<18)this.guns(o,pp,1.6)}
+ melee(){for(const a of this.orgs)for(const pa of a.parts){const m=P[pa.type].prov.melee;if(!m||pa.cd>0)continue;
+   out:for(const b of this.orgs){if(b.team===a.team)continue;for(const pb of b.parts)if(pa.wpos.distanceToSquared(pb.wpos)<1){this.damage(b,pb,m);pa.cd=.6;break out}}}}
+ projUpdate(dt){for(const p of this.projs){if(!p.on)continue;const sp=p.v.length(),n=Math.max(1,Math.ceil(sp*dt/.5)),h=dt/n,q=p.m.position;
+  for(let i=0;i<n&&p.on;i++){q.addScaledVector(p.v,h);p.dist+=sp*h;
+   if(p.dist>p.rng||this.dg.blocked(q.x,q.y,q.z)){p.on=false;p.m.visible=false;break}
+   hit:for(const o of this.orgs){if(o.team===p.team)continue;for(const r of o.parts)if(r.wpos.distanceToSquared(q)<.55){
+     let m=1;if(p.fa){const st=p.fa[0];m=1-(1-p.fa[1])*clamp((p.dist-st)/Math.max(1,p.rng-st),0,1)}
+     this.damage(o,r,p.dmg*m);p.on=false;p.m.visible=false;break hit}}}}}
+ update(dt){if(this.dead){this.deadT+=dt;if(this.deadT>.05)$('dead').className='s';if(this.deadT>2.5)$('dbt').className='s';return}this.t+=dt;this.msgT-=dt;const k=this.keys,pl=this.player,d=this.dir,sy=Math.sin(this.cy),cy=Math.cos(this.cy);
+  const f=(k.w||k.arrowup?1:0)-(k.s||k.arrowdown?1:0),r=(k.d||k.arrowright?1:0)-(k.a||k.arrowleft?1:0);
+  d.set(-f*sy+r*cy,(k[' ']?1:0)-(k.shift||k.c?1:0),-f*cy-r*sy);
+  this.aimPoint();
+  this.move(pl,dt,d,1);if(this.fire)this.guns(pl,this.aim,1);
+  for(const o of [...this.orgs])if(o.team==='e'&&o.parts.length)this.ai(o,dt);
+  this.melee();this.projUpdate(dt);this.applyHits();
+  if(G.mode==='run'&&this.player){const p=pl.pos,cp=Math.cos(this.cp),o=this.camT.set(sy*cp,Math.sin(this.cp),cy*cp),D=11,b=this.dg.S/2-1.2;let t=1;
+   for(const [pv,ov,lo,hi] of [[p.x,o.x*D,-b,b],[p.z,o.z*D,-b,b],[p.y,o.y*D,1,this.dg.H-1]]){if(ov>1e-3)t=Math.min(t,(hi-pv)/ov);else if(ov<-1e-3)t=Math.min(t,(lo-pv)/ov)}
+   t=clamp(t,.2,1);cam.position.set(p.x+o.x*D*t,p.y+o.y*D*t,p.z+o.z*D*t);cam.lookAt(p.x,p.y+1,p.z)}
+  this.hud()}
+ hud(){const pl=this.player;let hp=0,mx=0;for(const p of pl.parts){hp+=p.health;mx+=p.maxhp}
+  let near=null,bd=14;for(const c of this.corpses){const dd=c.pos.distanceToSquared(pl.pos);if(dd<bd){bd=dd;near=c}}
+  $('hud').textContent=`Room ${this.depth} | Enemies ${this.enemies()} | HP ${Math.ceil(hp)}/${Math.ceil(mx)} | O2 ${Math.round(pl.o2*100)}% | Alt ${pl.pos.y.toFixed(1)}\nDNA: ${Object.entries(G.dna).map(e=>e[0]+' '+e[1]).join(' ')}\nWASD move · Space jump (legs) / fly up (wings) · Shift/C descend · F shift-lock · mouse look · crosshair aim · click fire (click captures mouse, Esc releases) · E harvest · N next room · Q retreat\n`+(near?`[E] Harvest ${near.kind}: ${near.items.map(t=>P[t].n).join(', ')||'no intact parts'} (+${near.dna} ${near.sp} DNA)\n`:'')+(this.enemies()===0?'Room clear! Harvest, then press N to go deeper.\n':'')+(this.msgT>0?this.msg:'')}
+}
+
+// ===== main.js : loop, input, run flow =====
+const B=new Builder(),g=new Game();window.B=B;
+function toggleLock(){g.lock=!g.lock;$('sl').textContent='Shift Lock (F): '+(g.lock?'ON':'OFF');$('sl').className=g.lock?'on':''}
+function respawn(){const o=B.org;o.refresh();g.dead=false;$('dead').style.display='none';g.orgs=g.orgs.filter(x=>x.team==='e');g.player=g.inst(o,'p',0,g.dg.S/2-4,Math.PI);g.startRoom();g.say('Respawned. The room has been reset.')}
+function startRun(){g.dead=false;$('dead').style.display='none';const o=B.org;o.refresh();if(!o.headPartId)return B.say('Your organism needs a Head to be controlled.');
+ G.mode='run';$('xh').style.display='block';$('sl').style.display='block';$('ui').style.display='none';bgroup.visible=false;ggroup.visible=true;g.depth=1;g.orgs=[];g.cy=0;g.cp=.5;
+ g.player=g.inst(o,'p',0,g.dg.S/2-4,Math.PI);g.startRoom();cam.position.set(0,8,g.dg.S/2+8)}
+function endRun(msg){g.dead=false;$('dead').style.display='none';G.mode='build';$('xh').style.display='none';$('sl').style.display='none';if(document.exitPointerLock)document.exitPointerLock();$('ui').style.display='';bgroup.visible=true;ggroup.visible=false;
+ g.orgs.forEach(o=>o.parts.forEach(p=>ggroup.remove(p.mesh)));g.orgs=[];g.corpses.forEach(c=>ggroup.remove(c.mesh));g.corpses=[];g.projs.forEach(p=>{p.on=false;p.m.visible=false});
+ B.msg=msg+' Use harvested parts and DNA to build something stranger.';B.rebuild()}
+ggroup.visible=false;
+addEventListener('keydown',e=>{const k=e.key.toLowerCase();g.keys[k]=true;
+ if(G.mode==='build'){if(k==='r')B.rot();if(k==='c')B.centro();return}
+ if(k===' ')e.preventDefault();if(k==='e')g.harvest();if(k==='f')toggleLock();if(k==='q')endRun('You retreated.');
+ if(k==='n'){if(g.enemies()===0){g.depth++;g.startRoom()}else g.say('Defeat all organisms first.')}});
+addEventListener('keyup',e=>g.keys[e.key.toLowerCase()]=false);
+const cv=renderer.domElement,_r=V(),_u=V(),_f=V();let drag=null;
+cv.addEventListener('contextmenu',e=>e.preventDefault());
+cv.addEventListener('pointerdown',e=>{drag={m:0,b:e.button};if(G.mode==='run'){if(e.button===0)g.fire=true;if(document.pointerLockElement!==cv&&cv.requestPointerLock)try{cv.requestPointerLock()}catch(_){}}});
+addEventListener('pointerup',e=>{g.fire=false;if(drag&&G.mode==='build'&&drag.b===0&&drag.m<4&&e.target===cv)B.click(e);drag=null});
+addEventListener('pointermove',e=>{const mx=e.movementX||0,my=e.movementY||0;
+ if(G.mode==='build'){
+  if(drag){drag.m+=Math.abs(mx)+Math.abs(my);
+   if(drag.b===2){if(e.shiftKey){B.th-=mx*.01;B.ph=clamp(B.ph+my*.01,-1.4,1.5)}else{cam.matrixWorld.extractBasis(_r,_u,_f);const s=B.r*.002;B.tgt.addScaledVector(_r,-mx*s).addScaledVector(_u,my*s)}}}
+  else if(e.target===cv)B.hover(e)}
+ else if(g.player){g.cy-=mx*.004;g.cp=clamp(g.cp+my*.004,-.3,1.3)}});
+cv.addEventListener('wheel',e=>{B.r=clamp(B.r+e.deltaY*.01,4,30)},{passive:true});
+let last=performance.now();
+(function loop(now){requestAnimationFrame(loop);const dt=Math.min(.05,(now-last)/1000);last=now;
+ if(G.mode==='run'&&g.player)g.update(dt);
+ else{const c=Math.cos(B.ph),t=B.tgt;cam.position.set(t.x+B.r*c*Math.sin(B.th),t.y+B.r*Math.sin(B.ph),t.z+B.r*c*Math.cos(B.th));cam.lookAt(t);
+  const pz=1.5*(1+.15*Math.max(0,Math.sin(now/120)));B.pulse.forEach(m=>m.scale.setScalar(pz))}
+ renderer.render(scene,cam)})(last);
+</script></body></html>
