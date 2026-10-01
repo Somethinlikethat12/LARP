@@ -245,7 +245,9 @@ class Enemy extends Actor {
             this.deadT += dt;
             return;
         }
-        const g = this.g, p = g.player;
+        const g = this.g, p = g.coop && g.coop.host && g.coop.remote && g.coop.remote.st !== 'DEAD'
+            && (g.player.st === 'DEAD' || this.distTo(g.coop.remote) < this.distTo(g.player)) ? g.coop.remote : g.player;
+        this.target = p;
         this.stT += dt;
         this.attackCd -= dt;
         this.blockAnim -= dt;
@@ -415,7 +417,7 @@ class Enemy extends Actor {
             this.strafeT = 1 + this.rnd.nextDouble() * 2;
             this.strafeDir = this.rnd.nextBoolean() ? 1 : -1;
             if (this.dodgeCd <= 0 && this.dodgeChance > 0 && d < 280 && this.rnd.nextDouble() < (this.vet ? 0.35 : 0.12)) {
-                this.startDodge(this.g.player, false, false);
+                this.startDodge(this.target || this.g.player, false, false);
                 return;
             }
         }
@@ -511,6 +513,7 @@ class Enemy extends Actor {
             const tol = atk.arc / 2 + Math.asin(Math.min(1, p.r / Math.max(d, 1)));
             if (d <= atk.range + p.r && Math.abs(U.angDiff(this.facing, toP)) <= tol) {
                 const res = p.receive(this.x, this.y, atk.damage, atk.posture, atk.perilous);
+                if (g.coop && g.coop.host && p === g.coop.remote && res !== P_IGNORE) g.coop.impact(p, res);
                 if (res !== P_IGNORE) this.atkHit = true;
                 if (res === P_DEFLECT) this.onDeflected();
                 else if (res === P_BLOCK) {
@@ -527,7 +530,7 @@ class Enemy extends Actor {
     }
 
     onDeflected() {
-        const g = this.g, p = g.player, last = this.comboIdx + 1 >= this.combo.length;
+        const g = this.g, p = this.target || g.player, last = this.comboIdx + 1 >= this.combo.length;
         const chain = 1 + 0.08 * Math.min(p.deflectStreak - 1, 5);
         this.posture += (this.atk.posture * 1.3 + 6) * p.deflectPost * chain;
         this.lastDamageT = g.time;

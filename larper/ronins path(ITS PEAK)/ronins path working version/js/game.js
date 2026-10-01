@@ -28,6 +28,7 @@ class Game {
         this.rnd = new Rng(seed);
         this.world = new World(seed);
         this.enemies = [];
+        this.coop = null;
 
         this.time = 0;
         this.realTime = 0;
@@ -229,6 +230,10 @@ class Game {
 
     // ================= saving =================
     saveNow(announce) {
+        if (this.guestJourney) {
+            this.autosaveT = 30;
+            return false;
+        }
         const ok = SaveGame.write(SaveGame.serialize(this));
         this.hasSave = this.hasSave || ok;
         this.autosaveT = 30;
@@ -269,18 +274,18 @@ class Game {
             return;
         }
         if (this.paused && !this.showHelp) {
-            if (inp.hit('KeyS')) this.saveNow(true);
-            if (inp.hit('KeyX')) {
+            if (inp.hit('KeyS') && !this.guestJourney) this.saveNow(true);
+            if (inp.hit('KeyX') && !this.guestJourney) {
                 SaveGame.exportFile(this);
                 this.note('Save file exported: ' + SAVE_FILE_NAME, true);
             }
-            if (inp.hit('KeyL')) SaveGame.importFile(msg => this.note(msg, false));
+            if (inp.hit('KeyL') && !this.guestJourney) SaveGame.importFile(msg => this.note(msg, false));
             if (inp.hit('KeyQ')) {
                 this.saveNow(false);
                 location.replace(location.href.split(/[?#]/)[0]);
                 return;
             }
-            if (inp.hit('KeyM')) {
+            if (inp.hit('KeyM') && !this.coop) {
                 if (this.resetMapConfirmT > 0) {
                     this.resetMapConfirmT = 0;
                     this.resetMap();
@@ -316,6 +321,7 @@ class Game {
 
         if (this.hitstopT > 0) {
             this.hitstopT -= dt;
+            if (this.coop) this.coop.tick(dt);
             return;
         }
         if ((this.autosaveT -= dt) <= 0 && player.st !== 'DEAD') this.saveNow(false);
@@ -327,10 +333,13 @@ class Game {
         this.time += sdt;
 
         player.update(sdt);
-        for (const e of this.enemies) {
-            if (e.st === 'DEAD' || U.dist(e.x, e.y, player.x, player.y) < 1800 || e.st === 'RETURN') e.update(sdt);
+        if (!this.coop || this.coop.host) for (const e of this.enemies) {
+            if (e.st === 'DEAD' || U.dist(e.x, e.y, player.x, player.y) < 1800
+                || (this.coop && this.coop.remote && U.dist(e.x, e.y, this.coop.remote.x, this.coop.remote.y) < 1800)
+                || e.st === 'RETURN') e.update(sdt);
         }
-        this.separate();
+        if (!this.coop || this.coop.host) this.separate();
+        if (this.coop) this.coop.tick(dt);
         fx.update(sdt);
         const vw = sw / z, vh = sh / z;
         fx.ambient(this.camX, this.camY, vw, vh, sdt, Math.sin(this.time * 0.2) * 20);
@@ -412,7 +421,7 @@ class Game {
     respawn() {
         const player = this.player;
         player.respawn(this.lastShrine.x, this.lastShrine.y + 60);
-        for (const e of this.enemies) if (e.aware) e.resetToHome();
+        if (!this.coop) for (const e of this.enemies) if (e.aware) e.resetToHome();
         this.boss = null;
         this.camX = player.x;
         this.camY = player.y;
@@ -528,7 +537,8 @@ class Game {
             const tol = atk.arc / 2 + Math.asin(Math.min(1, e.r / Math.max(d, 1)));
             if (Math.abs(U.angDiff(p.facing, p.angleTo(e))) <= tol) {
                 p.hitSet.add(e);
-                e.takeHit(p, atk);
+                if (this.coop && !this.coop.host) this.coop.strike(e, atk);
+                else e.takeHit(p, atk);
             }
         }
     }
@@ -547,6 +557,12 @@ class Game {
     }
 
     onMikiri(p, e) {
+        if (this.coop && !this.coop.host) {
+            this.coop.action('mikiri', e);
+            p.ki = Math.min(100, p.ki + 25);
+            p.gainArtCharge();
+            return;
+        }
         const fx = this.fx;
         const a = p.angleTo(e);
         const cx = (p.x + e.x) / 2, cy = (p.y + e.y) / 2;
@@ -585,6 +601,12 @@ class Game {
     }
 
     executeDeathblow(p, e) {
+        if (this.coop && !this.coop.host) {
+            this.coop.action('deathblow', e);
+            p.ki = Math.min(100, p.ki + 20);
+            e.beingExecuted = false;
+            return;
+        }
         const fx = this.fx;
         const a = p.angleTo(e);
         const stealth = !e.aware;
@@ -622,6 +644,10 @@ class Game {
     }
 
     resolveIai(p, victims) {
+        if (this.coop && !this.coop.host) {
+            for (const e of victims) this.coop.action('iai', e);
+            return;
+        }
         this.sfx.play('DEATHBLOW');
         this.flash(rgb(200, 230, 255), 0.25);
         if (victims.length === 0) return;
@@ -718,6 +744,7 @@ class Game {
         const visEnemies = this.enemies.filter(e => e.x > l - 100 && e.x < r + 100 && e.y > t - 100 && e.y < b + 100);
         for (const e of visEnemies) if (e.st === 'DEAD') e.draw(g, this.time);
         for (const e of visEnemies) if (e.st !== 'DEAD') e.draw(g, this.time);
+        if (this.coop && this.coop.remote) this.coop.draw(g);
         player.draw(g, this.time);
         this.fx.drawWorld(g);
         world.drawCanopies(g, vis, player.x, player.y, this.time);
@@ -734,6 +761,7 @@ class Game {
             g.fillRect(0, 0, sw, sh);
         }
         this.drawHud(g, sw, sh, db);
+        if (this.coop) this.coop.drawStatus(g, sw);
         if (this.menu.open) this.menu.draw(g, sw, sh);
     }
 
@@ -986,10 +1014,10 @@ class Game {
             g.font = SUB_FONT;
             this.text(g, 'Esc to resume   -   H for controls', sw / 2, sh / 2 + 40, rgb(220, 210, 200), true);
             g.font = HUD_FONT;
-            this.text(g, '[S] Save now      [X] Export save file      [L] Import save file      [Q] Main menu', sw / 2, sh / 2 + 84,
+            this.text(g, this.coop || this.guestJourney ? '[Q] Main menu' : '[S] Save now      [X] Export save file      [L] Import save file      [Q] Main menu', sw / 2, sh / 2 + 84,
                 rgb(255, 215, 140), true);
             g.font = SMALL_FONT;
-            const resetHint = this.resetMapConfirmT > 0 ? 'Press M again to reset the map (keeps gear, skills & EXP)' : '[M] Reset Map';
+            const resetHint = this.coop ? 'Map reset is unavailable during co-op' : this.resetMapConfirmT > 0 ? 'Press M again to reset the map (keeps gear, skills & EXP)' : '[M] Reset Map';
             this.text(g, resetHint, sw / 2, sh / 2 + 108, this.resetMapConfirmT > 0 ? rgb(255, 150, 120) : rgb(190, 180, 165), true);
             this.text(g, 'Progress autosaves in this browser. Export a save file to back it up or move it to another browser / computer.',
                 sw / 2, sh / 2 + 128, rgb(190, 180, 165), true);

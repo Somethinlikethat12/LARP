@@ -6,7 +6,8 @@ const ROOM_PREFIX = 'RONINSPATH-';
 const PING_EVERY_MS = 250;
 
 class DuelLink {
-    constructor() {
+    constructor(prefix = ROOM_PREFIX) {
+        this.prefix = prefix;
         this.peer = null;
         this.conn = null;
         this.role = null;
@@ -50,7 +51,7 @@ class DuelLink {
     host(onCode, onErr) {
         this.role = 'host';
         const code = DuelLink.newCode();
-        this.peer = new Peer(ROOM_PREFIX + code, { debug: 0 });
+        this.peer = new Peer(this.prefix + code, { debug: 0 });
         this.peer.on('open', () => onCode(code));
         this.peer.on('error', e => onErr(e));
         this.peer.on('connection', c => {
@@ -68,7 +69,7 @@ class DuelLink {
     join(code, onErr) {
         this.role = 'client';
         this.peer = new Peer({ debug: 0 });
-        this.peer.on('open', () => this.wire(this.peer.connect(ROOM_PREFIX + code, { reliable: true, serialization: 'json' })));
+        this.peer.on('open', () => this.wire(this.peer.connect(this.prefix + code, { reliable: true, serialization: 'json' })));
         this.peer.on('error', e => onErr(e));
     }
 

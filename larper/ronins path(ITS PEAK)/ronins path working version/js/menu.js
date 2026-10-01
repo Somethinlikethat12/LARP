@@ -7,6 +7,7 @@
     const PANELS = ['menu-main', 'menu-host', 'menu-join'];
     let link = null;
     let joinTimer = 0;
+    let coopMode = false;
 
     const myLook = (() => {
         const lo = new Loadout();
@@ -37,7 +38,24 @@
         canvas.focus();
         new Duel(canvas, l, localIdx, delay, looks).run();
     };
-    const inviteUrl = code => location.href.split(/[?#]/)[0] + '?join=' + code;
+    const startCoop = (l, host, save, hostGame) => {
+        clearTimeout(joinTimer);
+        menu.hidden = true;
+        canvas.focus();
+        const game = hostGame || new Game(save.seed, canvas, save);
+        if (!host) {
+            game.guestJourney = true;
+            game.player.x += 45;
+            game.world.resolve(game.player);
+            game.camX = game.player.x;
+            game.camY = game.player.y;
+        }
+        new Coop(game, l, host);
+        game.note(host ? 'Friend joined your journey' : 'Joined host journey (guest progress is not saved)', true);
+        window.addEventListener('pagehide', () => l.close(), { once: true });
+        game.run();
+    };
+    const inviteUrl = code => location.href.split(/[?#]/)[0] + (coopMode ? '?coop=' : '?join=') + code;
     const netMissing = () => !DuelLink.available();
 
     $('btn-journey').textContent = SaveGame.read() !== null ? 'Continue Journey' : 'Begin Journey';
@@ -49,8 +67,10 @@
     for (const b of document.querySelectorAll('#menu .back')) b.onclick = back;
 
     // ---------------- host ----------------
-    $('btn-host').onclick = () => {
+    const host = isCoop => {
+        coopMode = isCoop;
         show('menu-host');
+        $('menu-host').querySelector('h2').textContent = isCoop ? 'Host a Co-op Journey' : 'Host a Duel';
         $('host-code').textContent = '------';
         $('host-link').value = '';
         $('btn-copy').disabled = true;
@@ -59,21 +79,33 @@
             return;
         }
         setStatus('host-status', 'Creating room...');
-        const l = link = new DuelLink();
+        const l = link = new DuelLink(isCoop ? 'RONINSPATH-COOP-' : undefined);
         l.host(code => {
             if (link !== l) return;
             $('host-code').textContent = code;
             $('host-link').value = inviteUrl(code);
             $('btn-copy').disabled = false;
-            setStatus('host-status', 'Waiting for an opponent... send them the invite link or the room code.');
+            setStatus('host-status', 'Waiting for a friend... send them the invite link or room code.');
         }, e => {
             if (link === l) setStatus('host-status', DuelLink.errorText(e), true);
         });
         l.on('hello', d => {
             if (link !== l) return;
-            if (d.v !== NET_VERSION) {
+            if (d.v !== NET_VERSION || !!d.coop !== isCoop) {
                 l.send({ t: 'reject', why: 'Version mismatch - both players need the same version of the game.' });
                 setStatus('host-status', 'Your opponent is running a different version of the game.', true);
+                return;
+            }
+            if (isCoop) {
+                const stored = SaveGame.read();
+                const params = new URLSearchParams(location.search);
+                const seed = stored ? stored.seed : params.has('seed') && Number.isFinite(Number(params.get('seed')))
+                    ? Number(params.get('seed')) : Math.floor(Math.random() * 2 ** 48);
+                const game = new Game(seed, canvas, stored);
+                const save = SaveGame.serialize(game);
+                l.send({ t: 'start', coop: true, save });
+                link = null;
+                startCoop(l, true, save, game);
                 return;
             }
             setStatus('host-status', 'Opponent found! Measuring the connection...');
@@ -91,6 +123,8 @@
             if (link === l) setStatus('host-status', 'Your opponent disconnected. Go back and host again.', true);
         };
     };
+    $('btn-host').onclick = () => host(false);
+    $('btn-host-coop').onclick = () => host(true);
 
     $('btn-copy').onclick = () => {
         const url = $('host-link').value;
@@ -122,11 +156,11 @@
         }
         dropLink();
         setStatus('join-status', 'Connecting...');
-        const l = link = new DuelLink();
+        const l = link = new DuelLink(coopMode ? 'RONINSPATH-COOP-' : undefined);
         joinTimer = setTimeout(() => {
             if (link === l && !(l.conn && l.conn.open)) {
                 dropLink();
-                setStatus('join-status', 'Could not reach that duel. Check the code and try again.', true);
+                setStatus('join-status', 'Could not reach that room. Check the code and try again.', true);
             }
         }, 15000);
         l.join(code, e => {
@@ -137,12 +171,12 @@
         l.onOpen = () => {
             if (link !== l) return;
             setStatus('join-status', 'Connected! Waiting for the host...');
-            l.send({ t: 'hello', v: NET_VERSION, look: myLook });
+            l.send({ t: 'hello', v: NET_VERSION, look: myLook, coop: coopMode });
         };
         l.on('full', () => {
             if (link !== l) return;
             dropLink();
-            setStatus('join-status', 'That duel already has two swordsmen.', true);
+            setStatus('join-status', 'That room already has two swordsmen.', true);
         });
         l.on('reject', d => {
             if (link !== l) return;
@@ -151,6 +185,16 @@
         });
         l.on('start', d => {
             if (link !== l) return;
+            if (coopMode) {
+                if (!d.coop || !SaveGame.valid(d.save)) {
+                    dropLink();
+                    setStatus('join-status', 'Invalid journey data from host.', true);
+                    return;
+                }
+                link = null;
+                startCoop(l, false, d.save);
+                return;
+            }
             link = null;
             const delay = Number.isInteger(d.delay) ? U.clamp(d.delay, 3, 8) : 4;
             const hostLook = Array.isArray(d.looks) ? d.looks[0] : null;
@@ -164,20 +208,25 @@
         };
     };
 
-    $('btn-join').onclick = () => {
+    const openJoin = isCoop => {
+        coopMode = isCoop;
         show('menu-join');
+        $('menu-join').querySelector('h2').textContent = isCoop ? 'Join a Co-op Journey' : 'Join a Duel';
         setStatus('join-status', '');
         $('join-code').focus();
     };
+    $('btn-join').onclick = () => openJoin(false);
+    $('btn-join-coop').onclick = () => openJoin(true);
     $('btn-join-go').onclick = join;
     $('join-code').addEventListener('keydown', e => {
         if (e.key === 'Enter') join();
     });
 
     // invite links open straight into the join screen
-    const invite = new URLSearchParams(location.search).get('join');
+    const params = new URLSearchParams(location.search);
+    const invite = params.get('coop') || params.get('join');
     if (invite) {
-        show('menu-join');
+        openJoin(params.has('coop'));
         $('join-code').value = DuelLink.cleanCode(invite);
         join();
     } else show('menu-main');
