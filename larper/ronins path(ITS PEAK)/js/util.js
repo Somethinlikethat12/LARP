@@ -191,6 +191,7 @@ class Input {
         this.keyHit = new Set();
         this.btn = new Array(8).fill(false);
         this.btnHit = new Array(8).fill(false);
+        this.btnStarted = new Array(8).fill(0);
         this.mx = 0;
         this.my = 0;
         const blockDefault = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab']);
@@ -209,11 +210,15 @@ class Input {
             if (b) {
                 this.btn[b] = true;
                 this.btnHit[b] = true;
+                this.btnStarted[b] = performance.now();
             }
         });
         window.addEventListener('mouseup', e => {
             const b = mapBtn(e.button);
-            if (b) this.btn[b] = false;
+            if (b) {
+                this.btn[b] = false;
+                this.btnStarted[b] = 0;
+            }
         });
         window.addEventListener('mousemove', e => {
             const rc = target.getBoundingClientRect();
@@ -227,6 +232,7 @@ class Input {
     hit(k) { return this.keyHit.has(k); }
     mouseDown(b) { return this.btn[b]; }
     mouseHit(b) { return this.btnHit[b]; }
+    mouseHeldFor(b) { return this.btn[b] && this.btnStarted[b] > 0 ? (performance.now() - this.btnStarted[b]) / 1000 : 0; }
     endTick() {
         this.keyHit.clear();
         this.btnHit.fill(false);
@@ -234,5 +240,6 @@ class Input {
     releaseAll() {
         this.keys.clear();
         this.btn.fill(false);
+        this.btnStarted.fill(0);
     }
 }

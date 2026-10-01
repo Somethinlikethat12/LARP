@@ -126,6 +126,14 @@ class Enemy extends Actor {
             this.lives = 3;
             this.hyper = true;
         }
+        // party size and New Game + tier scale every enemy by the same published numbers
+        const diff = g.difficulty;
+        this.dmgScale = 1;
+        if (diff) {
+            this.maxHp *= diff.enemyHp;
+            this.maxPosture *= diff.enemyPosture;
+            this.dmgScale = diff.enemyDmg;
+        }
         this.hp = this.maxHp;
         this.buildCombos();
     }
@@ -240,13 +248,28 @@ class Enemy extends Actor {
     }
 
     // ---------------- AI ----------------
+    /** In co-op the host is authoritative, so it steers every enemy at the closest party member still on their feet. */
+    pickTarget() {
+        const g = this.g, me = g.player;
+        if (!g.coop || !g.coop.host) return me;
+        let best = me, bd = me.st === 'DEAD' ? Infinity : this.distTo(me);
+        for (const b of g.coop.party) {
+            if (b.st === 'DEAD') continue;
+            const d = this.distTo(b);
+            if (d < bd) {
+                bd = d;
+                best = b;
+            }
+        }
+        return best;
+    }
+
     update(dt) {
         if (this.st === 'DEAD') {
             this.deadT += dt;
             return;
         }
-        const g = this.g, p = g.coop && g.coop.host && g.coop.remote && g.coop.remote.st !== 'DEAD'
-            && (g.player.st === 'DEAD' || this.distTo(g.coop.remote) < this.distTo(g.player)) ? g.coop.remote : g.player;
+        const g = this.g, p = this.pickTarget();
         this.target = p;
         this.stT += dt;
         this.attackCd -= dt;
@@ -512,8 +535,8 @@ class Enemy extends Actor {
         if (!this.atkHit && p.st !== 'DEAD') {
             const tol = atk.arc / 2 + Math.asin(Math.min(1, p.r / Math.max(d, 1)));
             if (d <= atk.range + p.r && Math.abs(U.angDiff(this.facing, toP)) <= tol) {
-                const res = p.receive(this.x, this.y, atk.damage, atk.posture, atk.perilous);
-                if (g.coop && g.coop.host && p === g.coop.remote && res !== P_IGNORE) g.coop.impact(p, res);
+                const res = p.receive(this.x, this.y, atk.damage * this.dmgScale, atk.posture * this.dmgScale, atk.perilous);
+                if (g.coop && g.coop.host && p !== g.player && res !== P_IGNORE) g.coop.impact(p, res);
                 if (res !== P_IGNORE) this.atkHit = true;
                 if (res === P_DEFLECT) this.onDeflected();
                 else if (res === P_BLOCK) {

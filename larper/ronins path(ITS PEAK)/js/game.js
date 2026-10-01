@@ -18,7 +18,8 @@ const REST_SAFE_R = 480;
 const REST_HUNT_R = 900;
 
 class Game {
-    constructor(seed, canvas, save) {
+    constructor(seed, canvas, save, opts) {
+        const o = opts || {};
         this.seed = seed;
         this.canvas = canvas;
         this.ctx = canvas.getContext('2d');
@@ -29,6 +30,10 @@ class Game {
         this.world = new World(seed);
         this.enemies = [];
         this.coop = null;
+        this.coopSettings = o.coopSettings || null;
+        this.partySize = U.clamp(o.partySize || 1, 1, MAX_MATCH_PLAYERS);
+        this.ngPlus = U.clamp(o.ngPlus || (save && Number.isInteger(save.ngPlus) ? save.ngPlus : 0), 0, NG_PLUS_MAX);
+        this.difficulty = difficultyFor(this.coopSettings, this.partySize, this.ngPlus);
 
         this.time = 0;
         this.realTime = 0;
@@ -102,22 +107,24 @@ class Game {
     }
 
     spawnEnemies() {
-        const world = this.world, rnd = this.rnd;
+        const world = this.world, rnd = this.rnd, mul = this.difficulty.enemyCount;
+        const scale = n => Math.max(1, Math.round(n * mul));
         let s = 1;
         for (const c of world.camps) {
             if (c.elite) {
                 this.totalElites++;
                 this.addEnemy(new Enemy(this, c.eliteType, c.x + 70, c.y, true, c.eliteName, s++), c);
-                this.addEnemy(this.randomGrunt(c, s++, false), c);
+                for (let i = 0; i < scale(1); i++) this.addEnemy(this.randomGrunt(c, s++, false), c);
             } else {
-                const n = 2 + rnd.nextInt(2);
+                const n = scale(2 + rnd.nextInt(2));
                 const brute = rnd.nextDouble() < 0.3;
                 for (let i = 0; i < n; i++) this.addEnemy(this.randomGrunt(c, s++, brute && i === 0), c);
             }
         }
         const sp = world.shrines[0];
+        const maxWanderers = Math.round(30 * mul);
         let wanderers = 0;
-        for (let tries = 0; tries < 2000 && wanderers < 30; tries++) {
+        for (let tries = 0; tries < 2000 && wanderers < maxWanderers; tries++) {
             const x = 300 + rnd.nextDouble() * (WORLD_SIZE - 600), y = 300 + rnd.nextDouble() * (WORLD_SIZE - 600);
             if (U.dist(x, y, sp.x, sp.y) < 900 || world.nearCamp(x, y) < 300 || world.nearShrine(x, y) < 400) continue;
             const group = rnd.nextDouble() < 0.4 ? 2 : 1;
@@ -285,7 +292,7 @@ class Game {
                 location.replace(location.href.split(/[?#]/)[0]);
                 return;
             }
-            if (inp.hit('KeyM') && !this.coop) {
+            if (inp.hit('KeyM') && (!this.coop || this.coop.host)) {
                 if (this.resetMapConfirmT > 0) {
                     this.resetMapConfirmT = 0;
                     this.resetMap();
@@ -293,6 +300,14 @@ class Game {
                     this.resetMapConfirmT = 3;
                     this.note('Press M again to reset the map (keeps gear, skills & EXP)', true);
                 }
+            }
+            if (this.coop && this.coop.host) {
+                const s = this.coopSettings;
+                if (inp.hit('KeyO')) this.setCoopSettings({ friendlyFire: !s.friendlyFire });
+                if (inp.hit('BracketLeft')) this.setCoopSettings({ enemyScale: s.enemyScale - 5 });
+                if (inp.hit('BracketRight')) this.setCoopSettings({ enemyScale: s.enemyScale + 5 });
+                if (inp.hit('Semicolon')) this.setCoopSettings({ countScale: s.countScale - 5 });
+                if (inp.hit('Quote')) this.setCoopSettings({ countScale: s.countScale + 5 });
             }
         }
         if (this.menu.open) {
@@ -333,10 +348,12 @@ class Game {
         this.time += sdt;
 
         player.update(sdt);
-        if (!this.coop || this.coop.host) for (const e of this.enemies) {
-            if (e.st === 'DEAD' || U.dist(e.x, e.y, player.x, player.y) < 1800
-                || (this.coop && this.coop.remote && U.dist(e.x, e.y, this.coop.remote.x, this.coop.remote.y) < 1800)
-                || e.st === 'RETURN') e.update(sdt);
+        if (!this.coop || this.coop.host) {
+            const party = this.coop ? this.coop.party : [];
+            for (const e of this.enemies) {
+                if (e.st === 'DEAD' || e.st === 'RETURN' || U.dist(e.x, e.y, player.x, player.y) < 1800
+                    || party.some(b => U.dist(e.x, e.y, b.x, b.y) < 1800)) e.update(sdt);
+            }
         }
         if (!this.coop || this.coop.host) this.separate();
         if (this.coop) this.coop.tick(dt);
@@ -429,10 +446,38 @@ class Game {
         this.saveSoon();
     }
 
-    /** Regenerates the world layout. Keeps gear, skills, EXP and elites slain; enemy stats use the same fixed
-     * formulas as a fresh game, so replaying the map never makes enemies stronger than a first playthrough. */
-    resetMap() {
-        const player = this.player, newSeed = Math.floor(Math.random() * 2 ** 48);
+    /** Regenerates the world layout. Keeps gear, skills, EXP and elites slain. Resetting the map after the Ashen
+     * Daimyo has fallen advances the journey one New Game + tier, up to +7, which permanently toughens enemies. */
+    setCoopSettings(changes) {
+        if (!this.coop || !this.coop.host) return;
+        this.applyCoopSettings(Object.assign({}, this.coopSettings, changes));
+        this.coop.link.send({ t: 'coop-settings', s: this.coopSettings });
+        this.note('Co-op settings updated  -  enemy numbers apply on the next map reset', true);
+    }
+
+    applyCoopSettings(settings) {
+        if (!this.coop) return;
+        const previous = this.difficulty;
+        this.coopSettings = sanitizeCoopSettings(settings);
+        this.coop.settings = this.coopSettings;
+        this.difficulty = difficultyFor(this.coopSettings, this.partySize, this.ngPlus);
+        const hpRatio = this.difficulty.enemyHp / previous.enemyHp;
+        const postureRatio = this.difficulty.enemyPosture / previous.enemyPosture;
+        for (const e of this.enemies) {
+            e.maxHp *= hpRatio;
+            e.hp = Math.min(e.maxHp, e.hp * hpRatio);
+            e.maxPosture *= postureRatio;
+            e.posture = Math.min(e.maxPosture, e.posture * postureRatio);
+            e.dmgScale = this.difficulty.enemyDmg;
+        }
+    }
+
+    resetMap(seedOverride, ngOverride, remote) {
+        const player = this.player, newSeed = Number.isFinite(seedOverride) ? seedOverride : Math.floor(Math.random() * 2 ** 48);
+        const ascend = ngOverride === undefined && this.bossDefeated && this.ngPlus < NG_PLUS_MAX;
+        if (Number.isInteger(ngOverride)) this.ngPlus = U.clamp(ngOverride, 0, NG_PLUS_MAX);
+        else if (ascend) this.ngPlus++;
+        this.difficulty = difficultyFor(this.coopSettings, this.partySize, this.ngPlus);
         this.seed = newSeed;
         this.rnd = new Rng(newSeed);
         this.world = new World(newSeed);
@@ -450,9 +495,15 @@ class Game {
         this.camX = player.x;
         this.camY = player.y;
         this.paused = false;
-        this.banner('New Horizons', 'The land is reborn  -  your strength remains', rgb(160, 220, 255));
+        if (this.ngPlus > 0) {
+            this.banner('NEW GAME +' + this.ngPlus, ascend ? 'A harsher land awaits  -  your strength remains'
+                : 'The land is reborn at the same trial', rgb(255, 150, 110));
+        } else this.banner('New Horizons', 'The land is reborn  -  your strength remains', rgb(160, 220, 255));
         this.sfx.play('SHRINE');
-        this.saveNow(true);
+        if (this.coop && this.coop.host && !remote) {
+            this.coop.link.send({ t: 'coop-reset', seed: this.seed, ngPlus: this.ngPlus, settings: this.coopSettings });
+        }
+        if (!remote) this.saveNow(true);
     }
 
     separate() {
@@ -541,6 +592,7 @@ class Game {
                 else e.takeHit(p, atk);
             }
         }
+        if (this.coop !== null && this.coop.settings.friendlyFire) this.coop.friendlyHitCheck(p, atk);
     }
 
     mikiriCandidate(p, dx, dy) {
@@ -553,10 +605,23 @@ class Game {
             const a = p.angleTo(e);
             if (dx * Math.cos(a) + dy * Math.sin(a) > 0.5) return e;
         }
+        if (this.coop !== null && this.coop.settings.friendlyFire) {
+            for (const e of this.coop.party) {
+                if (e.st !== 'ATTACK' || !e.cur || !e.cur.perilous || !e.cur.thrust) continue;
+                const timing = (e.phase === 0 && e.cur.windup - e.stT < 0.32) || e.phase === 1;
+                if (!timing || p.distTo(e) > e.cur.range + 80) continue;
+                const a = p.angleTo(e);
+                if (dx * Math.cos(a) + dy * Math.sin(a) > 0.5) return e;
+            }
+        }
         return null;
     }
 
     onMikiri(p, e) {
+        if (this.coop && this.coop.settings.friendlyFire && this.coop.party.includes(e)) {
+            this.coop.playerMikiri(p, e);
+            return;
+        }
         if (this.coop && !this.coop.host) {
             this.coop.action('mikiri', e);
             p.ki = Math.min(100, p.ki + 25);
@@ -744,7 +809,7 @@ class Game {
         const visEnemies = this.enemies.filter(e => e.x > l - 100 && e.x < r + 100 && e.y > t - 100 && e.y < b + 100);
         for (const e of visEnemies) if (e.st === 'DEAD') e.draw(g, this.time);
         for (const e of visEnemies) if (e.st !== 'DEAD') e.draw(g, this.time);
-        if (this.coop && this.coop.remote) this.coop.draw(g);
+        if (this.coop !== null) this.coop.draw(g);
         player.draw(g, this.time);
         this.fx.drawWorld(g);
         world.drawCanopies(g, vis, player.x, player.y, this.time);
@@ -950,7 +1015,7 @@ class Game {
         // --- top-left info ---
         const cleared = world.camps.filter(c => c.cleared).length;
         g.font = 'bold 22px serif';
-        this.text(g, world.biomeName(p.x, p.y), 24, 36, rgb(245, 235, 215), false);
+        this.text(g, world.biomeName(p.x, p.y) + (this.ngPlus > 0 ? '   -   NG+' + this.ngPlus : ''), 24, 36, rgb(245, 235, 215), false);
         g.font = SMALL_FONT;
         this.text(g, 'Elites slain ' + this.elitesSlain + '/' + this.totalElites + '     Camps cleared ' + cleared + '/' + world.camps.length
             + '     Kills ' + this.kills, 24, 58, rgb(220, 210, 190), false);
@@ -1017,8 +1082,14 @@ class Game {
             this.text(g, this.coop || this.guestJourney ? '[Q] Main menu' : '[S] Save now      [X] Export save file      [L] Import save file      [Q] Main menu', sw / 2, sh / 2 + 84,
                 rgb(255, 215, 140), true);
             g.font = SMALL_FONT;
-            const resetHint = this.coop ? 'Map reset is unavailable during co-op' : this.resetMapConfirmT > 0 ? 'Press M again to reset the map (keeps gear, skills & EXP)' : '[M] Reset Map';
+            const resetHint = this.coop && !this.coop.host ? 'Only the co-op host can reset the map' : this.resetMapConfirmT > 0 ? 'Press M again to reset the map (keeps gear, skills & EXP)' : '[M] Reset Map';
             this.text(g, resetHint, sw / 2, sh / 2 + 108, this.resetMapConfirmT > 0 ? rgb(255, 150, 120) : rgb(190, 180, 165), true);
+            if (this.coop && this.coop.host) {
+                const s = this.coopSettings;
+                this.text(g, '[O] Friendly fire: ' + (s.friendlyFire ? 'ON' : 'OFF')
+                    + '    [[ / ]] Enemy strength: ' + s.enemyScale + '%', sw / 2, sh / 2 + 138, rgb(190, 180, 165), true);
+                this.text(g, '[; / \'] Enemy numbers: ' + s.countScale + '% per extra player', sw / 2, sh / 2 + 162, rgb(190, 180, 165), true);
+            }
             this.text(g, 'Progress autosaves in this browser. Export a save file to back it up or move it to another browser / computer.',
                 sw / 2, sh / 2 + 128, rgb(190, 180, 165), true);
         }
@@ -1119,6 +1190,7 @@ class Game {
             ['Q', 'Drink healing gourd'],
             ['F', 'Iai Flash - dash-slash through enemies (needs full Ki)'],
             ['G', 'Dragon Flash - a long-range cut (learn it in the Skill Tree, needs full Ki)'],
+            ['H', 'Heavy perilous stab - dodge into it to Mikiri counter'],
             ['Hold Block + Attack / R', 'Combat Art - charged by deflects & Mikiri counters, not spammable'],
             ['Tab / I', 'Equipment (arts, sword, armor, charm, appearance) and the Skill Tree'],
             ['E', 'Rest at shrine (heal, refill gourds, set respawn) - not while enemies are near'],

@@ -13,7 +13,7 @@
             font-family: Georgia, 'Times New Roman', serif; color: #eadfcf;
         }
         #menu[hidden], #menu .panel[hidden] { display: none; }
-        #menu .panel { display: flex; flex-direction: column; align-items: center; gap: 14px; width: min(460px, 90vw); text-align: center; }
+        #menu .panel { display: flex; flex-direction: column; align-items: center; gap: 14px; width: min(520px, 92vw); text-align: center; }
         #menu h1 { margin: 0; font-size: 58px; color: #e03c32; letter-spacing: 2px; text-shadow: 3px 3px 0 #000; }
         #menu h2 { margin: 0 0 6px; font-size: 32px; color: #e03c32; }
         #menu .kanji { font-size: 30px; color: #c9b48f; margin-bottom: 18px; font-family: 'Yu Mincho', 'MS Mincho', 'Noto Serif JP', serif; }
@@ -33,6 +33,18 @@
         #menu .status { min-height: 42px; }
         #menu .status.bad { color: #ff8a70; }
         #menu .note { font-size: 13px; color: #8f806e; }
+        #menu .settings {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 7px 16px; width: 100%;
+            text-align: left; font-size: 13px; color: #c9bba5;
+        }
+        #menu .settings[hidden] { display: none; }
+        #menu .settings label { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+        #menu .settings input, #menu .settings select {
+            width: 92px; box-sizing: border-box; padding: 5px; font: 14px monospace; text-align: center;
+            color: #f4e9d8; background: #1a1210; border: 1px solid #6b5443; border-radius: 3px;
+        }
+        #menu .settings input[type="checkbox"] { width: auto; }
+        #menu .settings input:disabled { opacity: 0.4; }
     </style>
 </head>
 <body>
@@ -46,14 +58,34 @@
             <button id="btn-join-coop">Join Co-op Journey</button>
             <button id="btn-host">Host Online Duel</button>
             <button id="btn-join">Join Online Duel</button>
-            <p class="note">Co-op is for two friends in the same world. The host's journey saves progress; guests join for this session. Duels are 1v1, best of three.</p>
+            <p class="note">Co-op is for a party of friends in the same world. The host's journey saves progress; guests join for this session. Duels are 1v1 or free-for-all for up to eight swordsmen.</p>
         </div>
         <div class="panel" id="menu-host" hidden>
             <h2>Host a Duel</h2>
+            <div class="settings" id="duel-settings">
+                <label>Mode<select id="set-mode"><option value="duel">1v1 Duel</option><option value="ffa">Free-for-all</option></select></label>
+                <label>Max players<input id="set-max" type="number" min="2" max="8" step="1"></label>
+                <label>Rounds to win<input id="set-rounds" type="number" min="1" max="9" step="1"></label>
+                <label>Max health<input id="set-hp" type="number" min="25" max="400" step="5"></label>
+                <label>Posture<input id="set-posture" type="number" min="50" max="400" step="5"></label>
+                <label>Healing gourds<input id="set-gourds" type="number" min="0" max="5" step="1"></label>
+                <label>Ability charges<input id="set-charges" type="number" min="0" max="8" step="1"></label>
+                <label>Speed %<input id="set-speed" type="number" min="50" max="200" step="5"></label>
+                <label>Parry window ms<input id="set-parry" type="number" min="80" max="400" step="10"></label>
+                <label>Map size<select id="set-arena"><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option><option value="huge">Huge</option></select></label>
+            </div>
+            <div class="settings" id="coop-settings" hidden>
+                <label>Max players<input id="co-max" type="number" min="2" max="8" step="1"></label>
+                <label>Friendly fire<input id="co-ff" type="checkbox"></label>
+                <label>Enemy strength per extra player %<input id="co-enemy" type="number" min="0" max="150" step="5"></label>
+                <label>Enemy numbers per extra player %<input id="co-count" type="number" min="0" max="150" step="5"></label>
+            </div>
             <p>Room code</p>
             <div class="code" id="host-code">------</div>
             <input id="host-link" readonly placeholder="Invite link">
             <button id="btn-copy" disabled>Copy Invite Link</button>
+            <p class="note" id="host-players"></p>
+            <button id="btn-start" disabled>Start Match</button>
             <p class="status" id="host-status"></p>
             <button class="back">Back</button>
         </div>
@@ -62,6 +94,7 @@
             <p>Enter the room code from your host, or open their invite link.</p>
             <input id="join-code" maxlength="24" placeholder="ROOM CODE" autocomplete="off" spellcheck="false">
             <button id="btn-join-go">Join</button>
+            <p class="note" id="join-lobby"></p>
             <p class="status" id="join-status"></p>
             <button class="back">Back</button>
         </div>
@@ -75,6 +108,7 @@
     <script src="js/skills.js"></script>
     <script src="js/loadout.js"></script>
     <script src="js/player.js"></script>
+    <script src="js/settings.js"></script>
     <script src="js/save.js"></script>
     <script src="js/game.js"></script>
     <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>

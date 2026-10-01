@@ -60,6 +60,7 @@ const SaveGame = {
             dead: deadEnemies,
             kills: game.kills,
             elitesSlain: game.elitesSlain,
+            ngPlus: game.ngPlus,
             bossSpawned: game.bossSpawned,
             bossDefeated: game.bossDefeated,
             exp: game.exp,
@@ -89,6 +90,7 @@ const SaveGame = {
         }
         game.kills = Math.trunc(num(d.kills, 0, 1e7, 0));
         game.elitesSlain = Math.trunc(num(d.elitesSlain, 0, game.totalElites, 0));
+        game.ngPlus = Math.trunc(num(d.ngPlus, 0, NG_PLUS_MAX, 0));
         game.bossDefeated = d.bossDefeated === true;
         if (d.bossSpawned === true && !game.bossDefeated) game.spawnFinalBoss();
         game.loadout.apply(d.loadout, game.elitesSlain);

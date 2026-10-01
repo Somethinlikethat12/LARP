@@ -183,6 +183,8 @@ function computeStats(lo, baseHp, baseGourds, skills) {
 function scaledAttack(a, s) {
     const b = new Attack(a.name, a.windup * s.spd, a.active, a.recovery * s.spd, a.range + s.reach, a.arc / DEG, a.damage * s.dmg,
         a.posture * s.post, a.lunge);
+    b.perilous = !!a.perilous;
+    b.thrust = !!a.thrust;
     b.art = !!a.art;
     b.heavy = !!a.heavy;
     b.pierce = !!a.pierce;

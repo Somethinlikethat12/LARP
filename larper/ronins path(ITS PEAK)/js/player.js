@@ -2,11 +2,13 @@
 
 const P_IGNORE = 0, P_DEFLECT = 1, P_BLOCK = 2, P_HIT = 3;
 const PERFECT_WINDOW = 0.18, DODGE_TIME = 0.34, DODGE_IFRAMES = 0.25;
+const HEAVY_STAB_HOLD = 0.36;
 const P_COMBO = [
     new Attack('cut1', 0.08, 0.09, 0.20, 84, 150, 14, 12, 190),
     new Attack('cut2', 0.07, 0.09, 0.20, 84, 150, 14, 12, 190),
     new Attack('cut3', 0.15, 0.11, 0.34, 98, 230, 24, 22, 280),
 ];
+const P_STAB = new Attack('heavy-stab', 0.72, 0.18, 0.68, 126, 34, 30, 14, 560).markPerilous().markThrust();
 
 // Player states: 'FREE' | 'ATTACK' | 'ART' | 'DRAGON' | 'DODGE' | 'STAGGER' | 'HEAL' | 'DEATHBLOW' | 'MIKIRI' | 'IAI' | 'DEAD'
 class Player extends Actor {
@@ -37,6 +39,8 @@ class Player extends Actor {
         this.bufIai = 0;
         this.bufArt = 0;
         this.bufDragon = 0;
+        this.bufStab = 0;
+        this.mouseAttackPending = false;
         // combat art
         this.curArt = null;
         this.curArtAtks = null;
@@ -47,6 +51,8 @@ class Player extends Actor {
         this.dragonDone = false;
         // attack
         this.combo = -1;
+        this.stabAttack = false;
+        this.stabAtk = null;
         this.swingId = 0;
         this.phase = 0;
         this.swingSign = 1;
@@ -97,6 +103,16 @@ class Player extends Actor {
     /** Recompute stats and attacks from the equipped gear and learned skills. */
     applyLoadout() {
         const lo = this.g.loadout, s = computeStats(lo, this.baseMaxHp, this.baseGourds, this.g.skills);
+        // an online match hands every fighter the same host-chosen stats, so gear and skills never decide a duel
+        const mods = this.g.statMods;
+        if (mods) {
+            s.maxHp = mods.hp;
+            s.maxPosture = mods.posture;
+            s.gourds = mods.gourds;
+            s.charges = mods.charges;
+            s.move *= mods.speed;
+            s.deflect = mods.parry;
+        }
         this.maxHp = s.maxHp;
         this.hp = Math.min(this.hp, this.maxHp);
         this.maxPosture = s.maxPosture;
@@ -121,6 +137,7 @@ class Player extends Actor {
             b.heavy = i === 2;
             return b;
         });
+        this.stabAtk = scaledAttack(P_STAB, s);
         this.art = lo.artDef();
         const artStats = Object.assign({}, s, { dmg: s.dmg * s.artDmg });
         this.artAtks = this.art.hits.map(h => scaledAttack(h.atk, artStats));
@@ -152,7 +169,15 @@ class Player extends Actor {
         this.aimY = wy;
         this.guardHeld = inp.mouseDown(3) || inp.down('KeyK');
         this.dodgeHeld = inp.down('Space') || inp.down('KeyL');
-        if (inp.mouseHit(1) || inp.hit('KeyJ')) this.bufAttack = 0.22;
+        if (inp.hit('KeyJ')) this.bufAttack = 0.22;
+        if (inp.mouseHit(1)) this.mouseAttackPending = true;
+        if (this.mouseAttackPending && inp.mouseHeldFor(1) >= HEAVY_STAB_HOLD) {
+            this.mouseAttackPending = false;
+            this.bufStab = 0.2;
+        } else if (this.mouseAttackPending && !inp.mouseDown(1)) {
+            this.mouseAttackPending = false;
+            this.bufAttack = 0.22;
+        }
         if (inp.mouseHit(3) || inp.hit('KeyK')) this.bufParry = 0.15;
         if (inp.hit('Space') || inp.hit('KeyL')) this.bufDodge = 0.18;
         if (inp.hit('KeyQ')) this.bufHeal = 0.12;
@@ -171,6 +196,7 @@ class Player extends Actor {
         this.bufIai -= dt;
         this.bufArt -= dt;
         this.bufDragon -= dt;
+        this.bufStab -= dt;
         this.invuln -= dt;
         this.hurtFlash -= dt;
         this.guardFlash -= dt;
@@ -190,7 +216,6 @@ class Player extends Actor {
         const aimAng = Math.atan2(this.aimY - this.y, this.aimX - this.x);
         this.scarf += dt * (4 + Math.hypot(this.vx, this.vy) / 40);
         if (this.st !== 'FREE') this.sprinting = false;
-
         switch (this.st) {
             case 'FREE': this.free(dt, aimAng); break;
             case 'ATTACK': this.attack(dt, aimAng); break;
@@ -264,7 +289,6 @@ class Player extends Actor {
         this.st = 'FREE';
         this.stT = 0;
     }
-
     free(dt, aimAng) {
         const g = this.g;
         this.facing = U.turn(this.facing, aimAng, dt * 22);
@@ -288,6 +312,9 @@ class Player extends Actor {
             // Sekiro-style: attack while holding block performs the combat art
             if (this.guardHeld && g.deathblowTarget() === null) this.tryArt(aimAng);
             else this.beginAttackOrDeathblow(this.comboGrace > 0 && this.combo >= 0 && this.combo < 2 ? this.combo + 1 : 0);
+        } else if (this.bufStab > 0) {
+            this.bufStab = 0;
+            this.startStab(aimAng);
         } else if (this.bufArt > 0) {
             this.bufArt = 0;
             this.tryArt(aimAng);
@@ -330,6 +357,7 @@ class Player extends Actor {
         this.stT = 0;
         this.phase = 0;
         this.combo = i;
+        this.stabAttack = false;
         this.swingId++;
         this.cur = this.comboAtk[i];
         this.hitSet.clear();
@@ -338,10 +366,24 @@ class Player extends Actor {
         this.facing = U.turn(this.facing, Math.atan2(this.aimY - this.y, this.aimX - this.x), 1.2);
     }
 
+    startStab(aimAng) {
+        this.st = 'ATTACK';
+        this.stT = 0;
+        this.phase = 0;
+        this.combo = -1;
+        this.stabAttack = true;
+        this.swingId++;
+        this.cur = this.stabAtk;
+        this.hitSet.clear();
+        this.swingSign = 1;
+        this.guarding = false;
+        this.facing = aimAng;
+    }
+
     attack(dt, aimAng) {
         const g = this.g, cur = this.cur;
         if (this.phase === 0) this.facing = U.turn(this.facing, aimAng, dt * 14);
-        if (this.phase <= 1) {
+        if (this.phase <= 1 && !(this.stabAttack && this.phase === 0)) {
             const sp = this.phase === 0 ? cur.lunge * 0.35 : cur.lunge * (1 - this.stT / cur.active);
             if (!g.enemyInFront(this, this.facing, this.r + 26)) this.move(g.world, Math.cos(this.facing) * sp * dt, Math.sin(this.facing) * sp * dt);
         }
@@ -356,9 +398,23 @@ class Player extends Actor {
             } else if (this.stT >= cur.windup) {
                 this.phase = 1;
                 this.stT = 0;
-                g.sfx.play(this.combo === 2 ? 'HEAVY' : 'SLASH');
-                const start = this.facing + this.swingSign * cur.arc / 2;
-                g.fx.slash(this.x, this.y, cur.range * 0.82, start, -this.swingSign * cur.arc, 0.2, this.combo === 2 ? 9 : 6, rgb(180, 220, 255));
+                g.sfx.play(cur.perilous || this.combo === 2 ? 'HEAVY' : 'SLASH');
+                if (cur.thrust) {
+                    const fx = Math.cos(this.facing), fy = Math.sin(this.facing);
+                    const tx = this.x + fx * (cur.range + 10), ty = this.y + fy * (cur.range + 10);
+                    g.fx.line(this.x + fx * this.r, this.y + fy * this.r, tx, ty, 0.24, 7, rgb(255, 55, 40));
+                    g.fx.line(this.x + fx * (this.r + 8) - fy * 5, this.y + fy * (this.r + 8) + fx * 5,
+                        tx - fy * 5, ty + fx * 5, 0.18, 2, rgb(255, 220, 170));
+                    g.fx.sparks(tx, ty, this.facing + Math.PI, 1.4, 20, 520, rgb(255, 120, 55));
+                    g.fx.ring(tx, ty, 4, 42, 0.28, 4, rgb(255, 80, 45));
+                    g.fx.text('\u5371', this.x, this.y - this.r - 34, rgb(255, 40, 30), 26);
+                    g.hitstop(0.045);
+                    g.shake(8);
+                    g.zoomKick(0.06);
+                } else {
+                    const start = this.facing + this.swingSign * cur.arc / 2;
+                    g.fx.slash(this.x, this.y, cur.range * 0.82, start, -this.swingSign * cur.arc, 0.2, this.combo === 2 ? 9 : 6, rgb(180, 220, 255));
+                }
             }
         } else if (this.phase === 1) {
             g.playerHitCheck(this, cur);
@@ -370,7 +426,7 @@ class Player extends Actor {
             if (this.stT > 0.04 && this.bufArt > 0) {
                 this.bufArt = 0;
                 this.tryArt(aimAng);
-            } else if (this.stT > 0.04 && this.bufAttack > 0 && this.combo < 2) {
+            } else if (!this.stabAttack && this.stT > 0.04 && this.bufAttack > 0 && this.combo < 2) {
                 this.bufAttack = 0;
                 this.beginAttackOrDeathblow(this.combo + 1);
             } else if (this.bufParry > 0) {
@@ -760,6 +816,18 @@ class Player extends Actor {
         if (st === 'ART' && this.curArt.charge) {
             const left = this.curArt.hits[0].t - this.stT;
             if (left > 0 && left < 0.3) Draw.glint(g2, hx, hy, 8 + (0.3 - left) * 40, rgb(255, 225, 225));
+        }
+        if (st === 'ATTACK' && this.cur !== null && this.cur.perilous && this.phase === 0) {
+            const pulse = 0.7 + 0.3 * Math.sin(this.g.time * 10);
+            g2.fillStyle = 'rgba(120,0,0,' + (0.55 * pulse) + ')';
+            fillCircle(g2, x, y - r - 34, 12 * pulse);
+            g2.fillStyle = 'rgb(255,40,30)';
+            g2.font = 'bold 26px ' + KANJI_FAMILY;
+            g2.textAlign = 'center';
+            g2.textBaseline = 'middle';
+            g2.fillText('\u5371', x, y - r - 34);
+            g2.textAlign = 'left';
+            g2.textBaseline = 'alphabetic';
         }
     }
 }
